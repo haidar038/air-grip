@@ -89,6 +89,12 @@
         .progress-bar {
             transition: width 0.2s ease;
         }
+
+        /* Styling untuk device list */
+        #deviceList .list-group-item.active {
+            background-color: #007bff;
+            color: #fff;
+        }
     </style>
 </head>
 
@@ -100,14 +106,29 @@
             <span id="gestureIndicator" class="gesture-indicator"></span>
             <span id="connectionStatusText">Disconnected</span>
         </div>
-        <!-- Role Selection -->
+        <!-- Halaman Utama: Pemilihan Peran -->
         <div id="roleSelection" class="my-3">
             <button id="sendRoleBtn" class="btn btn-primary mx-2">Kirim File</button>
             <button id="receiveRoleBtn" class="btn btn-success mx-2">Terima File</button>
         </div>
-        <!-- Sender Section -->
+        <!-- Halaman Pemilihan Tipe Koneksi -->
+        <div id="connectionTypeSection" class="hidden">
+            <h3>Pilih Tipe Koneksi</h3>
+            <button id="manualConnectionBtn" class="btn btn-primary">Manual (Signaling)</button>
+        </div>
+        <!-- Halaman Pemilihan Device -->
+        <div id="deviceSelectionSection" class="hidden">
+            <h3>Pilih Device</h3>
+            <p>Device yang terdeteksi:</p>
+            <ul id="deviceList" class="list-group mb-3">
+                <li class="list-group-item" data-device-id="device1">Device 1</li>
+                <li class="list-group-item" data-device-id="device2">Device 2</li>
+            </ul>
+            <button id="selectDeviceBtn" class="btn btn-success" disabled>Pilih Device</button>
+        </div>
+        <!-- Halaman File Transfer untuk Sender -->
         <div id="senderSection" class="hidden">
-            <h3>Mode Pengirim</h3>
+            <h3>File Transfer Area (Sender)</h3>
             <div class="my-3">
                 <input type="file" id="fileInput" class="form-control" />
                 <small class="text-muted">File maksimal 100MB</small>
@@ -116,45 +137,25 @@
                 <p>Nama File: <span id="fileName"></span></p>
                 <p>Ukuran: <span id="fileSize"></span></p>
             </div>
+            <!-- Tombol untuk mengaktifkan transfer (menunggu gesture) -->
+            <button id="sendFileBtn" class="btn btn-warning my-2">Kirim File</button>
             <div id="progressContainer" class="progress my-3 hidden">
                 <div id="progressBar" class="progress-bar" role="progressbar">0%</div>
             </div>
         </div>
-        <!-- Receiver Section -->
+        <!-- Halaman File Transfer untuk Receiver -->
         <div id="receiverSection" class="hidden">
-            <h3>Mode Penerima</h3>
+            <h3>File Transfer Area (Receiver)</h3>
             <div id="receiverProgress" class="progress my-3 hidden">
                 <div id="receiverProgressBar" class="progress-bar" role="progressbar">0%</div>
             </div>
+            <p>Tunggu file masuk. Lakukan gesture GRAB untuk memulai penerimaan file.</p>
         </div>
-        <!-- Video Container -->
+        <!-- Container Video & Gesture -->
         <div class="video-container my-3">
             <video id="video" autoplay playsinline></video>
             <canvas id="canvas"></canvas>
             <div id="gestureStatus">Mendeteksi tangan...</div>
-        </div>
-        <!-- Signaling Section -->
-        <div id="signalingSection" class="mt-3 hidden">
-            <h4>Pertukaran Signaling</h4>
-            <div id="senderSignaling" class="hidden">
-                <button id="createOfferBtn" class="btn btn-warning mb-2">Buat Offer</button>
-                <textarea id="offerText" class="form-control mb-2" rows="3" placeholder="Offer akan muncul di sini"
-                    readonly></textarea>
-                <div class="input-group mb-2">
-                    <textarea id="answerText" class="form-control" rows="3"
-                        placeholder="Tempel Answer di sini"></textarea>
-                    <button id="setAnswerBtn" class="btn btn-outline-secondary">Set Answer</button>
-                </div>
-            </div>
-            <div id="receiverSignaling" class="hidden">
-                <div class="input-group mb-2">
-                    <textarea id="offerInput" class="form-control" rows="3"
-                        placeholder="Tempel Offer di sini"></textarea>
-                    <button id="setOfferBtn" class="btn btn-outline-secondary">Set Offer</button>
-                </div>
-                <textarea id="answerOutput" class="form-control" rows="3" placeholder="Answer akan muncul di sini"
-                    readonly></textarea>
-            </div>
         </div>
         <!-- Status Section -->
         <div id="status" class="alert alert-info mt-3" role="alert">
@@ -195,12 +196,14 @@
             model: null,
             gestureTriggered: false,
             fileToSend: null,
+            allowTransfer: false, // mengizinkan transfer hanya setelah tombol "Kirim File" ditekan
             rtcConnection: null,
             dataChannel: null,
             receivedBuffers: [],
             transferInProgress: false,
             lastGestureTime: 0,
-            lastDetectionTime: 0 // Untuk mengatur interval deteksi gesture
+            lastDetectionTime: 0,
+            selectedDevice: null
         };
 
         // Cache elemen DOM
@@ -213,11 +216,10 @@
             connectionStatusText: document.getElementById('connectionStatusText'),
             status: document.getElementById('status'),
             roleSelection: document.getElementById('roleSelection'),
+            connectionTypeSection: document.getElementById('connectionTypeSection'),
+            deviceSelectionSection: document.getElementById('deviceSelectionSection'),
             senderSection: document.getElementById('senderSection'),
             receiverSection: document.getElementById('receiverSection'),
-            signalingSection: document.getElementById('signalingSection'),
-            senderSignaling: document.getElementById('senderSignaling'),
-            receiverSignaling: document.getElementById('receiverSignaling'),
             fileInput: document.getElementById('fileInput'),
             fileName: document.getElementById('fileName'),
             fileSize: document.getElementById('fileSize'),
@@ -227,7 +229,11 @@
             downloadSection: document.getElementById('downloadSection'),
             downloadLink: document.getElementById('downloadLink'),
             finishSection: document.getElementById('finishSection'),
-            progressContainer: document.getElementById('progressContainer')
+            progressContainer: document.getElementById('progressContainer'),
+            manualConnectionBtn: document.getElementById('manualConnectionBtn'),
+            deviceList: document.getElementById('deviceList'),
+            selectDeviceBtn: document.getElementById('selectDeviceBtn'),
+            sendFileBtn: document.getElementById('sendFileBtn')
         };
 
         // Fungsi utilitas
@@ -235,7 +241,7 @@
             return Math.sqrt(Math.pow(p1[0] - p2[0], 2) + Math.pow(p1[1] - p2[1], 2));
         }
 
-        // Handler gesture grab dengan debouncing
+        // Handler gesture GRAB dengan debouncing dan pengecekan transfer aktif
         function handleGrabGesture() {
             const currentTime = Date.now();
             if (AppState.gestureTriggered || currentTime - AppState.lastGestureTime < CONFIG.DEBOUNCE_DELAY) {
@@ -247,14 +253,17 @@
             updateStatus('Gesture terdeteksi!', 'success');
 
             if (AppState.mode === 'sender') {
-                if (AppState.fileToSend && AppState.dataChannel?.readyState === 'open') {
+                if (AppState.allowTransfer && AppState.fileToSend && AppState.dataChannel?.readyState === 'open') {
                     updateStatus('Memulai pengiriman file...', 'info');
                     sendFile(AppState.fileToSend);
+                    // Reset setelah transfer dimulai
+                    AppState.allowTransfer = false;
                 } else {
-                    updateStatus('File belum dipilih atau koneksi belum siap', 'warning');
+                    updateStatus('File belum dipilih atau transfer belum diaktifkan', 'warning');
                 }
             } else if (AppState.mode === 'receiver') {
                 updateStatus('Siap menerima file', 'success');
+                // Logika penerimaan file bisa ditambahkan di sini
             }
 
             setTimeout(() => {
@@ -313,7 +322,7 @@
                         const indexTip = hand.landmarks[8];
                         const distance = calculateDistance(thumbTip, indexTip);
                         drawHandLandmarks(ctx, hand.landmarks);
-                        // Tampilkan status gesture dan eksekusi gesture grab jika memenuhi threshold
+                        // Tampilkan status gesture dan eksekusi gesture GRAB jika memenuhi threshold
                         if (distance < CONFIG.GESTURE_THRESHOLD) {
                             elements.gestureStatus.textContent = 'Gesture: GRAB';
                             handleGrabGesture();
@@ -356,7 +365,7 @@
             elements.status.textContent = message;
         }
 
-        // Pengiriman file dengan pembacaan file secara chunk
+        // Fungsi pengiriman file dengan pembacaan file secara chunk
         function sendFile(file) {
             if (AppState.transferInProgress) return;
             AppState.transferInProgress = true;
@@ -396,7 +405,7 @@
             reader.readAsArrayBuffer(file);
         }
 
-        // Dummy function untuk mengirim chunk via DataChannel (sesuaikan dengan implementasi Anda)
+        // Dummy function untuk mengirim chunk via DataChannel (simulasi koneksi)
         function sendDataChunk(chunk) {
             return new Promise((resolve, reject) => {
                 if (AppState.dataChannel && AppState.dataChannel.readyState === 'open') {
@@ -406,6 +415,19 @@
                     reject('DataChannel tidak siap');
                 }
             });
+        }
+
+        // Inisialisasi koneksi simulasi (dataChannel dummy) setelah device dipilih
+        function initSimulatedConnection() {
+            // Simulasi koneksi WebRTC DataChannel
+            AppState.dataChannel = {
+                readyState: 'open',
+                send: function (chunk) {
+                    console.log('Mengirim chunk, ukuran:', chunk.byteLength);
+                }
+            };
+            elements.connectionStatus.classList.remove('hidden');
+            elements.connectionStatusText.textContent = 'Connected ke ' + AppState.selectedDevice;
         }
 
         // Inisialisasi aplikasi setelah DOM siap
@@ -432,30 +454,62 @@
             return true;
         }
 
-        // Setup event listener untuk pemilihan peran dan input file
+        // Setup event listener untuk setiap langkah alur aplikasi
         document.addEventListener('DOMContentLoaded', () => {
             if (!validateDOMElements()) {
                 alert('Terjadi kesalahan saat memuat aplikasi.');
                 return;
             }
 
-            // Tombol mode pengirim
+            // Langkah 1: Pemilihan peran
             document.getElementById('sendRoleBtn').addEventListener('click', () => {
                 AppState.mode = 'sender';
-                elements.senderSection.classList.remove('hidden');
                 elements.roleSelection.classList.add('hidden');
-                updateStatus('Mode pengirim aktif. Silakan pilih file yang akan dikirim.', 'info');
+                elements.connectionTypeSection.classList.remove('hidden');
+                updateStatus('Mode pengirim dipilih. Pilih tipe koneksi.');
             });
 
-            // Tombol mode penerima
             document.getElementById('receiveRoleBtn').addEventListener('click', () => {
                 AppState.mode = 'receiver';
-                elements.receiverSection.classList.remove('hidden');
                 elements.roleSelection.classList.add('hidden');
-                updateStatus('Mode penerima aktif. Silakan ikuti instruksi untuk menerima file.', 'info');
+                elements.connectionTypeSection.classList.remove('hidden');
+                updateStatus('Mode penerima dipilih. Pilih tipe koneksi.');
             });
 
-            // Event listener untuk input file
+            // Langkah 2: Pemilihan tipe koneksi (saat ini hanya Manual Signaling)
+            elements.manualConnectionBtn.addEventListener('click', () => {
+                elements.connectionTypeSection.classList.add('hidden');
+                elements.deviceSelectionSection.classList.remove('hidden');
+                updateStatus('Pilih device yang tersedia.');
+            });
+
+            // Langkah 3: Pemilihan Device
+            // Ketika salah satu device pada list diklik, tandai sebagai terpilih
+            Array.from(elements.deviceList.children).forEach(item => {
+                item.addEventListener('click', () => {
+                    // Hapus class active dari seluruh item
+                    Array.from(elements.deviceList.children).forEach(i => i.classList.remove('active'));
+                    item.classList.add('active');
+                    elements.selectDeviceBtn.disabled = false;
+                    AppState.selectedDevice = item.getAttribute('data-device-id');
+                });
+            });
+
+            elements.selectDeviceBtn.addEventListener('click', () => {
+                elements.deviceSelectionSection.classList.add('hidden');
+                // Inisialisasi koneksi simulasi
+                initSimulatedConnection();
+                // Tampilkan halaman file transfer sesuai peran
+                if (AppState.mode === 'sender') {
+                    elements.senderSection.classList.remove('hidden');
+                    updateStatus('Silakan pilih file dan tekan tombol Kirim File untuk memulai transfer.');
+                } else if (AppState.mode === 'receiver') {
+                    elements.receiverSection.classList.remove('hidden');
+                    updateStatus('Menunggu file masuk. Lakukan gesture GRAB untuk memulai penerimaan file.');
+                }
+            });
+
+            // Event listener untuk input file (sender)
             elements.fileInput.addEventListener('change', (event) => {
                 const file = event.target.files[0];
                 if (file) {
@@ -463,7 +517,17 @@
                     elements.fileSize.textContent = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
                     elements.fileDetails.classList.remove('hidden');
                     AppState.fileToSend = file;
-                    updateStatus(`File ${file.name} dipilih. Lakukan gesture untuk mengirim file.`, 'info');
+                    updateStatus(`File ${file.name} dipilih. Tekan tombol Kirim File untuk mengaktifkan transfer gesture.`, 'info');
+                }
+            });
+
+            // Event listener untuk tombol "Kirim File" (sender)
+            elements.sendFileBtn.addEventListener('click', () => {
+                if (AppState.fileToSend) {
+                    AppState.allowTransfer = true;
+                    updateStatus('Transfer diaktifkan. Lakukan gesture GRAB untuk mengirim file.', 'info');
+                } else {
+                    updateStatus('Pilih file terlebih dahulu.', 'warning');
                 }
             });
 
