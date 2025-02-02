@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Gesture-Operated File Transfer</title>
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <!-- TensorFlow dan Handpose -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.20.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7/dist/handpose.min.js"></script>
+    <!-- Adapter for WebRTC -->
+    <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+    <style>
+        body {
+            background: #f8f9fa;
+        }
+
+        #video {
+            width: 320px;
+            height: 240px;
+            border: 1px solid #ddd;
+            background: #000;
+        }
+
+        #canvas {
+            display: none;
+        }
+
+        .signal-box {
+            margin-top: 20px;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container text-center mt-4">
+        <h1>Gesture-Operated File Transfer</h1>
+        <!-- Pilih Peran -->
+        <div id="roleSelection" class="my-3">
+            <button id="sendRoleBtn" class="btn btn-primary mx-2">Kirim File</button>
+            <button id="receiveRoleBtn" class="btn btn-success mx-2">Terima File</button>
+        </div>
+
+        <!-- Bagian File & Gesture (Sender) -->
+        <div id="senderSection" class="hidden">
+            <h3>Sender Mode</h3>
+            <div class="my-3">
+                <input type="file" id="fileInput" class="form-control" />
+            </div>
+            <p>Setelah memilih file, lakukan gesture <strong>grab</strong> (dekatkan ujung jari telunjuk dan ibu jari)
+                untuk memulai pengiriman file.</p>
+        </div>
+
+        <!-- Bagian Gesture (Receiver) -->
+        <div id="receiverSection" class="hidden">
+            <h3>Receiver Mode</h3>
+            <p>Lakukan gesture <strong>grab</strong> untuk mengkonfirmasi penerimaan file.</p>
+        </div>
+
+        <!-- Video untuk Gesture Detection -->
+        <div class="my-3">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <!-- Signaling untuk WebRTC -->
+        <div id="signalingSection" class="signal-box hidden">
+            <h4>Signaling (Manual Exchange)</h4>
+            <div id="senderSignaling" class="hidden">
+                <button id="createOfferBtn" class="btn btn-warning mb-2">Buat Offer</button>
+                <div class="mb-2">
+                    <textarea id="offerText" class="form-control" rows="3" placeholder="Offer akan muncul di sini"
+                        readonly></textarea>
+                </div>
+                <div class="input-group mb-2">
+                    <textarea id="answerText" class="form-control" rows="3"
+                        placeholder="Tempel Answer di sini"></textarea>
+                    <button id="setAnswerBtn" class="btn btn-outline-secondary">Set Answer</button>
+                </div>
+            </div>
+            <div id="receiverSignaling" class="hidden">
+                <div class="input-group mb-2">
+                    <textarea id="offerInput" class="form-control" rows="3"
+                        placeholder="Tempel Offer di sini"></textarea>
+                    <button id="setOfferBtn" class="btn btn-outline-secondary">Set Offer</button>
+                </div>
+                <div class="mb-2">
+                    <textarea id="answerOutput" class="form-control" rows="3" placeholder="Answer akan muncul di sini"
+                        readonly></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status / Notifikasi -->
+        <div id="status" class="alert alert-info mt-3" role="alert">
+            Status: Menunggu pemilihan peran...
+        </div>
+
+        <!-- Unduh file (Receiver) -->
+        <div id="downloadSection" class="hidden mt-3">
+            <a id="downloadLink" class="btn btn-success" download="received_file">Unduh File</a>
+        </div>
+    </div>
+
+    <script>
+        // Global Variables
+        let mode = null; // 'sender' atau 'receiver'
+        let model = null;
+        let video = document.getElementById('video');
+        let canvas = document.getElementById('canvas');
+        let ctx = canvas.getContext('2d');
+        let gestureTriggered = false; // debounce untuk gesture
+        const GESTURE_THRESHOLD = 40; // pixel, sesuaikan threshold deteksi gesture
+        let fileToSend = null;
+
+        // WebRTC variables
+        let rtcConnection = null;
+        let dataChannel = null;
+        const CHUNK_SIZE = 16000; // 16KB per chunk
+        let receivedBuffers = [];
+
+        // STUN server configuration
+        const rtcConfig = {
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        };
+
+        // DOM Elements
+        const roleSelection = document.getElementById('roleSelection');
+        const sendRoleBtn = document.getElementById('sendRoleBtn');
+        const receiveRoleBtn = document.getElementById('receiveRoleBtn');
+        const senderSection = document.getElementById('senderSection');
+        const receiverSection = document.getElementById('receiverSection');
+        const signalingSection = document.getElementById('signalingSection');
+        const senderSignaling = document.getElementById('senderSignaling');
+        const receiverSignaling = document.getElementById('receiverSignaling');
+        const statusDiv = document.getElementById('status');
+        const fileInput = document.getElementById('fileInput');
+        const createOfferBtn = document.getElementById('createOfferBtn');
+        const offerText = document.getElementById('offerText');
+        const answerText = document.getElementById('answerText');
+        const setAnswerBtn = document.getElementById('setAnswerBtn');
+        const offerInput = document.getElementById('offerInput');
+        const setOfferBtn = document.getElementById('setOfferBtn');
+        const answerOutput = document.getElementById('answerOutput');
+        const downloadSection = document.getElementById('downloadSection');
+        const downloadLink = document.getElementById('downloadLink');
+
+        // Inisialisasi kamera
+        async function setupCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
+                video.srcObject = stream;
+                return new Promise(resolve => {
+                    video.onloadedmetadata = () => {
+                        // Sesuaikan ukuran canvas
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        resolve();
+                    };
+                });
+            } catch (err) {
+                alert('Error accessing camera: ' + err);
+            }
+        }
+
+        // Muat model Handpose
+        async function loadModel() {
+            model = await handpose.load();
+            console.log('Handpose model loaded.');
+        }
+
+        // Fungsi untuk menghitung jarak antara dua titik
+        function distance(p1, p2) {
+            const dx = p1[0] - p2[0];
+            const dy = p1[1] - p2[1];
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        // Fungsi untuk mendeteksi gesture grab
+        async function detectGesture() {
+            if (!model) return;
+            // Gambar frame video ke canvas
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const predictions = await model.estimateHands(video);
+            if (predictions.length > 0) {
+                // Ambil landmark tangan pertama
+                const landmarks = predictions[0].landmarks;
+                // Misal, gunakan jarak antara ujung ibu jari (landmark[4]) dan ujung telunjuk (landmark[8])
+                const thumbTip = landmarks[4];
+                const indexTip = landmarks[8];
+                const d = distance(thumbTip, indexTip);
+                // Jika jaraknya kurang dari threshold, anggap gesture grab terdeteksi
+                if (d < GESTURE_THRESHOLD && !gestureTriggered) {
+                    gestureTriggered = true; // debouncing agar tidak trigger berulang
+                    console.log('Grab gesture detected.');
+                    statusDiv.innerText = 'Gesture detected!';
+                    if (mode === 'sender') {
+                        // Pastikan file sudah dipilih dan channel siap
+                        if (fileToSend && dataChannel && dataChannel.readyState === 'open') {
+                            sendFile(fileToSend);
+                        } else {
+                            statusDiv.innerText = 'File belum dipilih atau koneksi belum siap.';
+                        }
+                    } else if (mode === 'receiver') {
+                        // Pada receiver, gesture dapat digunakan untuk mengkonfirmasi penerimaan (misal: untuk memulai proses simpan file)
+                        // Di sini hanya akan menampilkan notifikasi karena file transfer akan dilakukan otomatis melalui data channel.
+                        statusDiv.innerText = 'Gesture konfirmasi penerimaan file telah diterima.';
+                    }
+                    // Reset trigger setelah 2 detik agar bisa dipakai lagi
+                    setTimeout(() => { gestureTriggered = false; }, 2000);
+                }
+            }
+            requestAnimationFrame(detectGesture);
+        }
+
+        // --- WebRTC Setup ---
+
+        // Inisialisasi RTCPeerConnection
+        function createPeerConnection() {
+            rtcConnection = new RTCPeerConnection(rtcConfig);
+
+            rtcConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    // Kandidat ICE akan ditambahkan secara otomatis ke SDP.
+                    console.log('New ICE candidate:', event.candidate);
+                }
+            };
+
+            // Jika mode receiver, tangani event data channel
+            rtcConnection.ondatachannel = event => {
+                dataChannel = event.channel;
+                setupDataChannel();
+            };
+        }
+
+        // Konfigurasi data channel
+        function setupDataChannel() {
+            dataChannel.onopen = () => {
+                console.log('Data channel open!');
+                statusDiv.innerText = 'Data channel sudah terbuka, siap transfer file.';
+            };
+            dataChannel.onmessage = event => {
+                // Menerima file dalam bentuk chunk (ArrayBuffer)
+                if (typeof event.data === 'string' && event.data === 'EOF') {
+                    // Selesai menerima file, gabungkan buffer
+                    const receivedBlob = new Blob(receivedBuffers);
+                    downloadLink.href = URL.createObjectURL(receivedBlob);
+                    downloadLink.download = fileToSend ? fileToSend.name : 'received_file';
+                    downloadSection.classList.remove('hidden');
+                    statusDiv.innerText = 'File diterima, klik link unduh.';
+                    // Reset buffer
+                    receivedBuffers = [];
+                } else {
+                    // Tambahkan chunk ke buffer
+                    receivedBuffers.push(event.data);
+                }
+            };
+            dataChannel.onerror = error => {
+                console.error('Data Channel Error:', error);
+            };
+        }
+
+        // --- File Transfer ---
+
+        // Fungsi untuk mengirim file secara chunk
+        function sendFile(file) {
+            const reader = new FileReader();
+            let offset = 0;
+            statusDiv.innerText = 'Mengirim file...';
+
+            reader.onload = e => {
+                const buffer = e.target.result;
+                // Kirim file dalam chunk
+                const sendChunk = () => {
+                    if (!dataChannel || dataChannel.readyState !== 'open') {
+                        console.error('Data channel tidak siap.');
+                        return;
+                    }
+                    const chunk = buffer.slice(offset, offset + CHUNK_SIZE);
+                    dataChannel.send(chunk);
+                    offset += CHUNK_SIZE;
+                    if (offset < buffer.byteLength) {
+                        // Lanjutkan mengirim chunk berikutnya
+                        setTimeout(sendChunk, 10);
+                    } else {
+                        // Kirim tanda akhir file
+                        dataChannel.send('EOF');
+                        statusDiv.innerText = 'File berhasil dikirim.';
+                    }
+                };
+                sendChunk();
+            };
+
+            reader.onerror = error => {
+                console.error('Error reading file:', error);
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        // --- Signaling Logic (Manual) ---
+
+        // Untuk sender: buat offer dan tampilkan di textarea
+        createOfferBtn.addEventListener('click', async () => {
+            createPeerConnection();
+            // Buat data channel untuk file transfer
+            dataChannel = rtcConnection.createDataChannel('fileTransfer');
+            setupDataChannel();
+            try {
+                const offer = await rtcConnection.createOffer();
+                await rtcConnection.setLocalDescription(offer);
+                offerText.value = JSON.stringify(offer);
+                statusDiv.innerText = 'Offer dibuat. Kirim offer ke receiver.';
+            } catch (err) {
+                console.error('Error creating offer:', err);
+            }
+        });
+
+        // Untuk sender: set answer dari receiver
+        setAnswerBtn.addEventListener('click', async () => {
+            const answer = answerText.value;
+            if (!answer) return alert('Masukkan Answer dari receiver!');
+            try {
+                const answerDesc = new RTCSessionDescription(JSON.parse(answer));
+                await rtcConnection.setRemoteDescription(answerDesc);
+                statusDiv.innerText = 'Koneksi berhasil, siap transfer file.';
+            } catch (err) {
+                console.error('Error setting answer:', err);
+            }
+        });
+
+        // Untuk receiver: set offer dari sender, buat answer dan tampilkan
+        setOfferBtn.addEventListener('click', async () => {
+            const offer = offerInput.value;
+            if (!offer) return alert('Masukkan Offer dari sender!');
+            createPeerConnection();
+            try {
+                const offerDesc = new RTCSessionDescription(JSON.parse(offer));
+                await rtcConnection.setRemoteDescription(offerDesc);
+                const answer = await rtcConnection.createAnswer();
+                await rtcConnection.setLocalDescription(answer);
+                answerOutput.value = JSON.stringify(answer);
+                statusDiv.innerText = 'Answer dibuat. Kirim answer ke sender.';
+            } catch (err) {
+                console.error('Error handling offer:', err);
+            }
+        });
+
+        // --- Event Listeners untuk Pilihan Peran ---
+
+        sendRoleBtn.addEventListener('click', () => {
+            mode = 'sender';
+            senderSection.classList.remove('hidden');
+            signalingSection.classList.remove('hidden');
+            senderSignaling.classList.remove('hidden');
+            roleSelection.classList.add('hidden');
+            statusDiv.innerText = 'Mode Sender: Pilih file dan lakukan gesture grab untuk mengirim file.';
+        });
+
+        receiveRoleBtn.addEventListener('click', () => {
+            mode = 'receiver';
+            receiverSection.classList.remove('hidden');
+            signalingSection.classList.remove('hidden');
+            receiverSignaling.classList.remove('hidden');
+            roleSelection.classList.add('hidden');
+            statusDiv.innerText = 'Mode Receiver: Tunggu koneksi dan lakukan gesture grab untuk konfirmasi penerimaan file.';
+        });
+
+        // Simpan file yang dipilih oleh sender
+        fileInput.addEventListener('change', e => {
+            if (e.target.files.length > 0) {
+                fileToSend = e.target.files[0];
+                statusDiv.innerText = `File dipilih: ${fileToSend.name}. Lakukan gesture grab untuk mengirim.`;
+            }
+        });
+
+        // Inisialisasi kamera dan model, lalu mulai deteksi gesture
+        async function initApp() {
+            await setupCamera();
+            await loadModel();
+            detectGesture();
+        }
+        initApp();
+    </script>
+</body>
+
+</html>
