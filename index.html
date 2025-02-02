@@ -203,7 +203,24 @@
             connectionStatus: document.getElementById('connectionStatus'),
             gestureIndicator: document.getElementById('gestureIndicator'),
             connectionStatusText: document.getElementById('connectionStatusText'),
-            // ... (rest of the DOM elements)
+            status: document.getElementById('status'),
+            roleSelection: document.getElementById('roleSelection'),
+            senderSection: document.getElementById('senderSection'),
+            receiverSection: document.getElementById('receiverSection'),
+            signalingSection: document.getElementById('signalingSection'),
+            senderSignaling: document.getElementById('senderSignaling'),
+            receiverSignaling: document.getElementById('receiverSignaling'),
+            fileInput: document.getElementById('fileInput'),
+            fileName: document.getElementById('fileName'),
+            fileSize: document.getElementById('fileSize'),
+            fileDetails: document.getElementById('fileDetails'),
+            progressBar: document.getElementById('progressBar'),
+            receiverProgressBar: document.getElementById('receiverProgressBar'),
+            downloadSection: document.getElementById('downloadSection'),
+            downloadLink: document.getElementById('downloadLink'),
+            finishSection: document.getElementById('finishSection'),
+            finishBtn: document.getElementById('finishBtn'),
+            progressContainer: document.getElementById('progressContainer')
         };
 
         // Initialize WebRTC configuration
@@ -357,8 +374,16 @@
         }
 
         function updateStatus(message, type = 'info') {
-            elements.status.className = `alert alert-${type} mt-3`;
-            elements.status.textContent = message;
+            try {
+                if (elements.status) {
+                    elements.status.className = `alert alert-${type} mt-3`;
+                    elements.status.textContent = message;
+                } else {
+                    console.warn('Status element not found when updating status:', message);
+                }
+            } catch (error) {
+                console.error('Error updating status:', error);
+            }
         }
 
         // Event listeners and initialization
@@ -374,8 +399,39 @@
             }
         }
 
-        // Initialize the application
-        document.addEventListener('DOMContentLoaded', initApp);
+        // Validate DOM elements
+        function validateDOMElements() {
+            for (const [key, element] of Object.entries(elements)) {
+                if (!element) {
+                    console.error(`Missing DOM element: ${key}`);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Initialize the application with proper DOM validation
+        function safeInitApp() {
+            if (validateDOMElements()) {
+                initApp().catch(error => {
+                    console.error('Application initialization failed:', error);
+                    if (elements.status) {
+                        elements.status.className = 'alert alert-danger mt-3';
+                        elements.status.textContent = 'Gagal menginisialisasi aplikasi. Silakan muat ulang halaman.';
+                    }
+                });
+            } else {
+                console.error('DOM validation failed');
+                alert('Terjadi kesalahan saat memuat aplikasi. Silakan muat ulang halaman.');
+            }
+        }
+
+        // Wait for DOM to be fully loaded before initialization
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', safeInitApp);
+        } else {
+            safeInitApp();
+        }
     </script>
 </body>
 
