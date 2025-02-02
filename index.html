@@ -480,6 +480,30 @@
         } else {
             safeInitApp();
         }
+
+        document.getElementById('sendRoleBtn').addEventListener('click', () => {
+            // Tampilkan bagian pengirim (sender)
+            document.getElementById('senderSection').classList.remove('hidden');
+            // Sembunyikan bagian pemilihan peran
+            document.getElementById('roleSelection').classList.add('hidden');
+            // Jika ada status, perbarui juga
+            updateStatus('Mode pengirim aktif. Silakan pilih file yang akan dikirim.', 'info');
+        });
+
+        document.getElementById('fileInput').addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                // Tampilkan detail file (nama dan ukuran)
+                document.getElementById('fileName').textContent = file.name;
+                document.getElementById('fileSize').textContent = (file.size / 1024 / 1024).toFixed(2) + ' MB';
+                document.getElementById('fileDetails').classList.remove('hidden');
+                // Simpan file ke state aplikasi
+                AppState.fileToSend = file;
+                updateStatus(`File ${file.name} dipilih. Lakukan gesture untuk mengirim file.`, 'info');
+            }
+        });
+
+
     </script>
 </body>
 
