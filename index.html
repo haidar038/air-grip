@@ -175,15 +175,23 @@
     </div>
 
     <script>
-        // Constants
-        const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
-        const CHUNK_SIZE = 16384; // 16KB
-        const GESTURE_THRESHOLD = 35; // Pixel distance for gesture detection
-        const GESTURE_CONFIDENCE_THRESHOLD = 0.8;
-        const DEBOUNCE_DELAY = 1000; // 1 second
+        // Constants and Configurations
+        const CONFIG = {
+            MAX_FILE_SIZE: 100 * 1024 * 1024, // 100MB
+            CHUNK_SIZE: 16384, // 16KB
+            GESTURE_THRESHOLD: 35, // Pixel distance for gesture detection
+            GESTURE_CONFIDENCE_THRESHOLD: 0.8,
+            DEBOUNCE_DELAY: 1000, // 1 second
+            RTC_CONFIG: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            }
+        };
 
-        // Global state
-        let state = {
+        // Global state object
+        const AppState = {
             mode: null,
             model: null,
             gestureTriggered: false,
@@ -194,6 +202,46 @@
             transferInProgress: false,
             lastGestureTime: 0
         };
+
+        // Utility Functions
+        function calculateDistance(p1, p2) {
+            return Math.sqrt(
+                Math.pow(p1[0] - p2[0], 2) +
+                Math.pow(p1[1] - p2[1], 2)
+            );
+        }
+
+        // Gesture Handling Functions
+        function handleGrabGesture() {
+            const currentTime = Date.now();
+
+            if (AppState.gestureTriggered ||
+                currentTime - AppState.lastGestureTime < CONFIG.DEBOUNCE_DELAY) {
+                return;
+            }
+
+            AppState.gestureTriggered = true;
+            AppState.lastGestureTime = currentTime;
+
+            elements.gestureIndicator?.classList.add('active');
+            updateStatus('Gesture terdeteksi!', 'success');
+
+            if (AppState.mode === 'sender') {
+                if (AppState.fileToSend && AppState.dataChannel?.readyState === 'open') {
+                    updateStatus('Memulai pengiriman file...', 'info');
+                    sendFile(AppState.fileToSend);
+                } else {
+                    updateStatus('File belum dipilih atau koneksi belum siap', 'warning');
+                }
+            } else if (AppState.mode === 'receiver') {
+                updateStatus('Siap menerima file', 'success');
+            }
+
+            setTimeout(() => {
+                AppState.gestureTriggered = false;
+                elements.gestureIndicator?.classList.remove('active');
+            }, CONFIG.DEBOUNCE_DELAY);
+        }
 
         // DOM Elements
         const elements = {
@@ -261,19 +309,19 @@
 
         // Enhanced gesture detection
         async function detectGesture() {
-            if (!state.model) return;
+            if (!AppState.model) return;
 
             const ctx = elements.canvas.getContext('2d');
             ctx.drawImage(elements.video, 0, 0);
 
             try {
-                const predictions = await state.model.estimateHands(elements.video);
+                const predictions = await AppState.model.estimateHands(elements.video);
 
                 if (predictions.length > 0) {
                     const hand = predictions[0];
                     const confidence = hand.handInViewConfidence;
 
-                    if (confidence > GESTURE_CONFIDENCE_THRESHOLD) {
+                    if (confidence > CONFIG.GESTURE_CONFIDENCE_THRESHOLD) {
                         const thumbTip = hand.landmarks[4];
                         const indexTip = hand.landmarks[8];
                         const distance = calculateDistance(thumbTip, indexTip);
@@ -283,10 +331,10 @@
 
                         // Update gesture status
                         elements.gestureStatus.textContent =
-                            distance < GESTURE_THRESHOLD ? 'Gesture: GRAB' : 'Gesture: OPEN';
+                            distance < CONFIG.GESTURE_THRESHOLD ? 'Gesture: GRAB' : 'Gesture: OPEN';
 
                         // Check for grab gesture
-                        if (distance < GESTURE_THRESHOLD) {
+                        if (distance < CONFIG.GESTURE_THRESHOLD) {
                             handleGrabGesture();
                         }
                     } else {
@@ -305,8 +353,8 @@
 
         // Improved file transfer with progress tracking
         function sendFile(file) {
-            if (state.transferInProgress) return;
-            state.transferInProgress = true;
+            if (AppState.transferInProgress) return;
+            AppState.transferInProgress = true;
 
             const reader = new FileReader();
             let offset = 0;
@@ -317,7 +365,7 @@
                 const sendChunk = async () => {
                     if (offset >= totalSize) {
                         await sendMetadata();
-                        state.transferInProgress = false;
+                        AppState.transferInProgress = false;
                         updateStatus('File berhasil dikirim', 'success');
                         return;
                     }
@@ -330,7 +378,7 @@
                         setTimeout(sendChunk, 10);
                     } catch (error) {
                         console.error('Error sending chunk:', error);
-                        state.transferInProgress = false;
+                        AppState.transferInProgress = false;
                         updateStatus('Error mengirim file', 'danger');
                     }
                 };
@@ -340,7 +388,7 @@
 
             reader.onerror = (error) => {
                 console.error('File reading error:', error);
-                state.transferInProgress = false;
+                AppState.transferInProgress = false;
                 updateStatus('Error membaca file', 'danger');
             };
 
@@ -365,7 +413,7 @@
         }
 
         function updateProgress(percent) {
-            const progressBar = state.mode === 'sender' ?
+            const progressBar = AppState.mode === 'sender' ?
                 elements.progressBar :
                 elements.receiverProgressBar;
 
@@ -390,7 +438,7 @@
         async function initApp() {
             try {
                 await setupCamera();
-                state.model = await handpose.load();
+                AppState.model = await handpose.load();
                 updateStatus('Aplikasi siap digunakan');
                 detectGesture();
             } catch (error) {
