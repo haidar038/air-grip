@@ -4,534 +4,696 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Gesture-Operated File Transfer (Optimized for Mobile)</title>
-    <!-- Bootstrap CSS -->
+    <title>Advanced Gesture-Based File Transfer</title>
+    <!-- Bootstrap 5.3 & Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <!-- TensorFlow & Handpose -->
-    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.20.0/dist/tf.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7/dist/handpose.min.js"></script>
-    <!-- WebRTC Adapter -->
-    <script defer src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <!-- Custom CSS -->
     <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #1e40af;
+            --success-color: #16a34a;
+            --warning-color: #ca8a04;
+            --error-color: #dc2626;
+            --background-color: #f8fafc;
+            --text-color: #1e293b;
+        }
+
         body {
-            background: #f8f9fa;
-            margin: 0;
-            padding: 0;
+            background: var(--background-color);
+            color: var(--text-color);
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        .app-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
         }
 
         .video-container {
             position: relative;
             width: 100%;
-            max-width: 320px;
-            margin: 0 auto;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            border-radius: 8px;
+            max-width: 480px;
+            margin: 1rem auto;
+            border-radius: 1rem;
             overflow: hidden;
-            background: #000;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
         }
 
-        #video {
+        .video-container video,
+        .video-container canvas {
             width: 100%;
             height: auto;
             display: block;
         }
 
-        #canvas {
+        .video-container canvas {
             position: absolute;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
             pointer-events: none;
         }
 
-        #gestureStatus {
+        .gesture-status {
             position: absolute;
-            bottom: 10px;
+            bottom: 1rem;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.7);
-            color: #fff;
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-size: 14px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            backdrop-filter: blur(4px);
         }
 
-        .hidden {
-            display: none;
-        }
-
-        .connection-status {
+        .connection-badge {
             position: fixed;
-            top: 10px;
-            right: 10px;
-            padding: 8px;
-            border-radius: 4px;
-            background: #28a745;
-            color: #fff;
-            font-size: 12px;
+            top: 1rem;
+            right: 1rem;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--success-color);
+            color: white;
+            transition: all 0.3s ease;
+        }
+
+        .connection-badge.disconnected {
+            background: var(--error-color);
         }
 
         .gesture-indicator {
-            width: 20px;
-            height: 20px;
+            width: 0.75rem;
+            height: 0.75rem;
             border-radius: 50%;
-            background-color: red;
-            display: inline-block;
-            margin-right: 10px;
-            vertical-align: middle;
+            background: #ef4444;
+            transition: background-color 0.3s ease;
         }
 
         .gesture-indicator.active {
-            background-color: #28a745;
+            background: #22c55e;
+        }
+
+        .card {
+            background: white;
+            border-radius: 1rem;
+            border: none;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn {
+            border-radius: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .btn-primary:hover {
+            background: var(--secondary-color);
+            border-color: var(--secondary-color);
+        }
+
+        .progress {
+            height: 0.75rem;
+            border-radius: 1rem;
+            background: #e2e8f0;
         }
 
         .progress-bar {
-            transition: width 0.2s ease;
+            background: var(--primary-color);
+            transition: width 0.3s ease;
         }
 
-        /* Styling untuk device list */
-        #deviceList .list-group-item.active {
-            background-color: #007bff;
-            color: #fff;
+        .device-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .device-item {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .device-item:hover {
+            background: #f1f5f9;
+        }
+
+        .device-item.active {
+            border-color: var(--primary-color);
+            background: #eff6ff;
+        }
+
+        .file-drop-zone {
+            border: 2px dashed #cbd5e1;
+            border-radius: 1rem;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .file-drop-zone:hover,
+        .file-drop-zone.drag-over {
+            border-color: var(--primary-color);
+            background: #f8fafc;
+        }
+
+        .loading-spinner {
+            width: 1.5rem;
+            height: 1.5rem;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .app-container {
+                padding: 0.5rem;
+            }
+
+            .video-container {
+                max-width: 100%;
+            }
+
+            .btn {
+                padding: 0.5rem 1rem;
+            }
         }
     </style>
 </head>
 
 <body>
-    <div class="container text-center mt-3">
-        <h1>Gesture-Operated File Transfer</h1>
+    <div class="app-container">
+        <header class="text-center mb-4">
+            <h1 class="display-5 fw-bold">Advanced Gesture File Transfer</h1>
+            <p class="text-muted">Transfer files securely using gesture recognition</p>
+        </header>
+
         <!-- Connection Status -->
-        <div id="connectionStatus" class="connection-status hidden">
-            <span id="gestureIndicator" class="gesture-indicator"></span>
+        <div id="connectionStatus" class="connection-badge disconnected">
+            <div id="gestureIndicator" class="gesture-indicator"></div>
             <span id="connectionStatusText">Disconnected</span>
         </div>
-        <!-- Halaman Utama: Pemilihan Peran -->
-        <div id="roleSelection" class="my-3">
-            <button id="sendRoleBtn" class="btn btn-primary mx-2">Kirim File</button>
-            <button id="receiveRoleBtn" class="btn btn-success mx-2">Terima File</button>
-        </div>
-        <!-- Halaman Pemilihan Tipe Koneksi -->
-        <div id="connectionTypeSection" class="hidden">
-            <h3>Pilih Tipe Koneksi</h3>
-            <button id="manualConnectionBtn" class="btn btn-primary">Manual (Signaling)</button>
-        </div>
-        <!-- Halaman Pemilihan Device -->
-        <div id="deviceSelectionSection" class="hidden">
-            <h3>Pilih Device</h3>
-            <p>Device yang terdeteksi:</p>
-            <ul id="deviceList" class="list-group mb-3">
-                <li class="list-group-item" data-device-id="device1">Device 1</li>
-                <li class="list-group-item" data-device-id="device2">Device 2</li>
-            </ul>
-            <button id="selectDeviceBtn" class="btn btn-success" disabled>Pilih Device</button>
-        </div>
-        <!-- Halaman File Transfer untuk Sender -->
-        <div id="senderSection" class="hidden">
-            <h3>File Transfer Area (Sender)</h3>
-            <div class="my-3">
-                <input type="file" id="fileInput" class="form-control" />
-                <small class="text-muted">File maksimal 100MB</small>
+
+        <!-- Main Content -->
+        <div class="row g-4">
+            <!-- Video Preview -->
+            <div class="col-md-6">
+                <div class="video-container">
+                    <video id="video" autoplay playsinline muted></video>
+                    <canvas id="motionCanvas"></canvas>
+                    <canvas id="gestureCanvas"></canvas>
+                    <div id="gestureStatus" class="gesture-status">
+                        Initializing camera...
+                    </div>
+                </div>
             </div>
-            <div id="fileDetails" class="my-2 hidden">
-                <p>Nama File: <span id="fileName"></span></p>
-                <p>Ukuran: <span id="fileSize"></span></p>
+
+            <!-- Control Panel -->
+            <div class="col-md-6">
+                <!-- Role Selection -->
+                <div id="roleSelection" class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title">Choose Your Role</h5>
+                        <div class="d-grid gap-2">
+                            <button id="sendRoleBtn" class="btn btn-primary">
+                                <i class="bi bi-upload me-2"></i>Send Files
+                            </button>
+                            <button id="receiveRoleBtn" class="btn btn-success">
+                                <i class="bi bi-download me-2"></i>Receive Files
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- File Transfer Section (Sender) -->
+                <div id="senderSection" class="card mb-4 d-none">
+                    <div class="card-body">
+                        <h5 class="card-title">Send Files</h5>
+                        <div id="fileDropZone" class="file-drop-zone mb-3">
+                            <i class="bi bi-cloud-upload display-4"></i>
+                            <p class="mb-0">Drag & drop files here or click to select</p>
+                            <input type="file" id="fileInput" class="d-none">
+                        </div>
+                        <div id="fileDetails" class="d-none">
+                            <div class="d-flex align-items-center mb-3">
+                                <i class="bi bi-file-earmark me-2"></i>
+                                <div>
+                                    <h6 id="fileName" class="mb-1">filename.txt</h6>
+                                    <small id="fileSize" class="text-muted">0 MB</small>
+                                </div>
+                            </div>
+                            <button id="sendFileBtn" class="btn btn-primary w-100">
+                                Start Transfer
+                            </button>
+                        </div>
+                        <div id="progressContainer" class="d-none">
+                            <div class="progress mb-2">
+                                <div id="progressBar" class="progress-bar" role="progressbar"></div>
+                            </div>
+                            <small class="text-muted">Transfer in progress...</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- File Transfer Section (Receiver) -->
+                <div id="receiverSection" class="card mb-4 d-none">
+                    <div class="card-body">
+                        <h5 class="card-title">Receive Files</h5>
+                        <div class="text-center py-4">
+                            <div class="loading-spinner mb-3"></div>
+                            <p class="mb-0">Waiting for incoming files...</p>
+                            <small class="text-muted d-block mt-2">
+                                Make a GRAB gesture to accept the transfer
+                            </small>
+                        </div>
+                        <div id="receiverProgress" class="progress mb-2 d-none">
+                            <div id="receiverProgressBar" class="progress-bar" role="progressbar"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status Messages -->
+                <div id="status" class="alert alert-info" role="alert">
+                    Ready to start...
+                </div>
             </div>
-            <!-- Tombol untuk mengaktifkan transfer (menunggu gesture) -->
-            <button id="sendFileBtn" class="btn btn-warning my-2">Kirim File</button>
-            <div id="progressContainer" class="progress my-3 hidden">
-                <div id="progressBar" class="progress-bar" role="progressbar">0%</div>
-            </div>
-        </div>
-        <!-- Halaman File Transfer untuk Receiver -->
-        <div id="receiverSection" class="hidden">
-            <h3>File Transfer Area (Receiver)</h3>
-            <div id="receiverProgress" class="progress my-3 hidden">
-                <div id="receiverProgressBar" class="progress-bar" role="progressbar">0%</div>
-            </div>
-            <p>Tunggu file masuk. Lakukan gesture GRAB untuk memulai penerimaan file.</p>
-        </div>
-        <!-- Container Video & Gesture -->
-        <div class="video-container my-3">
-            <video id="video" autoplay playsinline></video>
-            <canvas id="canvas"></canvas>
-            <div id="gestureStatus">Mendeteksi tangan...</div>
-        </div>
-        <!-- Status Section -->
-        <div id="status" class="alert alert-info mt-3" role="alert">
-            Status: Menunggu pemilihan peran...
-        </div>
-        <!-- Download Section -->
-        <div id="downloadSection" class="hidden mt-3">
-            <p>File siap diunduh:</p>
-            <a id="downloadLink" class="btn btn-success" download>Unduh File</a>
-        </div>
-        <!-- Finish Section -->
-        <div id="finishSection" class="hidden mt-3">
-            <button id="finishBtn" class="btn btn-secondary">Selesai / Kembali ke Halaman Utama</button>
         </div>
     </div>
 
-    <!-- Script utama -->
-    <script defer>
-        // Konfigurasi dan konstanta
+    <!-- Scripts -->
+    <script type="module">
+        // Frame Subtraction Algorithm Implementation
+        class MotionDetector {
+            constructor(threshold = 30) {
+                this.threshold = threshold;
+                this.previousFrame = null;
+                this.motionPixels = new Set();
+            }
+
+            processFrame(currentFrame, width, height) {
+                if (!this.previousFrame) {
+                    this.previousFrame = currentFrame;
+                    return { hasMotion: false, motionPixels: new Set() };
+                }
+
+                this.motionPixels.clear();
+                let hasMotion = false;
+                const len = currentFrame.length;
+
+                for (let i = 0; i < len; i += 4) {
+                    const rDiff = Math.abs(currentFrame[i] - this.previousFrame[i]);
+                    const gDiff = Math.abs(currentFrame[i + 1] - this.previousFrame[i + 1]);
+                    const bDiff = Math.abs(currentFrame[i + 2] - this.previousFrame[i + 2]);
+
+                    if (rDiff > this.threshold || gDiff > this.threshold || bDiff > this.threshold) {
+                        const pixelIndex = Math.floor(i / 4);
+                        const x = pixelIndex % width;
+                        const y = Math.floor(pixelIndex / width);
+                        this.motionPixels.add({ x, y });
+                        hasMotion = true;
+                    }
+                }
+
+                this.previousFrame = currentFrame;
+                return { hasMotion, motionPixels: this.motionPixels };
+            }
+
+            reset() {
+                this.previousFrame = null;
+                this.motionPixels.clear();
+            }
+        }
+
+        // Application State Management
+        const AppState = {
+            mode: null,
+            motionDetector: new MotionDetector(30),
+            gestureDetected: false,
+            fileToSend: null,
+            allowTransfer: false,
+            connection: null,
+            dataChannel: null,
+            transferInProgress: false,
+            lastGestureTime: 0,
+            buffers: [],
+
+            reset() {
+                this.mode = null;
+                this.gestureDetected = false;
+                this.fileToSend = null;
+                this.allowTransfer = false;
+                this.transferInProgress = false;
+                this.buffers = [];
+                this.motionDetector.reset();
+            }
+        };
+
+        // UI Controller
+        const UI = {
+            elements: {
+                video: document.getElementById('video'),
+                motionCanvas: document.getElementById('motionCanvas'),
+                gestureCanvas: document.getElementById('gestureCanvas'),
+                gestureStatus: document.getElementById('gestureStatus'),
+                connectionStatus: document.getElementById('connectionStatus'),
+                gestureIndicator: document.getElementById('gestureIndicator'),
+                status: document.getElementById('status'),
+                // ... (more element references)
+            },
+
+            init() {
+                this.setupEventListeners();
+                this.setupDragAndDrop();
+            },
+
+            setupEventListeners() {
+                // Role selection
+                document.getElementById('sendRoleBtn').addEventListener('click', () => {
+                    AppState.mode = 'sender';
+                    this.showSection('senderSection');
+                });
+
+                document.getElementById('receiveRoleBtn').addEventListener('click', () => {
+                    AppState.mode = 'receiver';
+                    this.showSection('receiverSection');
+                });
+
+                // File input handling
+                const fileDropZone = document.getElementById('fileDropZone');
+                const fileInput = document.getElementById('fileInput');
+
+                fileDropZone.addEventListener('click', () => fileInput.click());
+                fileInput.addEventListener('change', this.handleFileSelect.bind(this));
+
+                // Send button
+                document.getElementById('sendFileBtn').addEventListener('click', () => {
+                    if (AppState.fileToSend) {
+                        AppState.allowTransfer = true;
+                        this.updateStatus('Ready to transfer. Make a GRAB gesture to start.', 'info');
+                    }
+                });
+            },
+
+            setupDragAndDrop() {
+                const dropZone = document.getElementById('fileDropZone');
+
+                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                    dropZone.addEventListener(eventName, (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    });
+                });
+
+                ['dragenter', 'dragover'].forEach(eventName => {
+                    dropZone.addEventListener(eventName, () => {
+                        dropZone.classList.add('drag-over');
+                    });
+                });
+
+                ['dragleave', 'drop'].forEach(eventName => {
+                    dropZone.addEventListener(eventName, () => {
+                        dropZone.classList.remove('drag-over');
+                    });
+                });
+
+                dropZone.addEventListener('drop', (e) => {
+                    const file = e.dataTransfer.files[0];
+                    if (file) {
+                        this.handleFileSelect({ target: { files: [file] } });
+                    }
+                });
+            },
+
+            handleFileSelect(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                if (file.size > CONFIG.MAX_FILE_SIZE) {
+                    this.updateStatus('File too large. Maximum size is 100MB', 'error');
+                    return;
+                }
+
+                AppState.fileToSend = file;
+                document.getElementById('fileName').textContent = file.name;
+                document.getElementById('fileSize').textContent = this.formatFileSize(file.size);
+                document.getElementById('fileDetails').classList.remove('d-none');
+            },
+
+            formatFileSize(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                const k = 1024;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            },
+
+            showSection(sectionId) {
+                const sections = ['roleSelection', 'senderSection', 'receiverSection'];
+                sections.forEach(id => {
+                    document.getElementById(id).classList.toggle('d-none', id !== sectionId);
+                });
+            },
+
+            updateStatus(message, type = 'info') {
+                const statusEl = this.elements.status;
+                statusEl.className = `alert alert-${type}`;
+                statusEl.textContent = message;
+            },
+
+            updateProgress(percent, isReceiver = false) {
+                const progressBar = isReceiver ?
+                    document.getElementById('receiverProgressBar') :
+                    document.getElementById('progressBar');
+                const progressContainer = isReceiver ?
+                    document.getElementById('receiverProgress') :
+                    document.getElementById('progressContainer');
+
+                progressContainer.classList.remove('d-none');
+                progressBar.style.width = `${percent}%`;
+                progressBar.setAttribute('aria-valuenow', percent);
+                progressBar.textContent = `${Math.round(percent)}%`;
+            }
+        };
+
+        // Gesture Detection Controller
+        const GestureController = {
+            async init() {
+                try {
+                    await this.setupCamera();
+                    this.setupCanvases();
+                    this.startDetection();
+                } catch (error) {
+                    console.error('Failed to initialize gesture detection:', error);
+                    UI.updateStatus('Camera access failed. Please check permissions.', 'error');
+                }
+            },
+
+            async setupCamera() {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    }
+                });
+                UI.elements.video.srcObject = stream;
+                await new Promise(resolve => UI.elements.video.onloadedmetadata = resolve);
+            },
+
+            setupCanvases() {
+                const { video, motionCanvas, gestureCanvas } = UI.elements;
+                [motionCanvas, gestureCanvas].forEach(canvas => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                });
+            },
+
+            startDetection() {
+                const processFrame = () => {
+                    if (AppState.transferInProgress) {
+                        requestAnimationFrame(processFrame);
+                        return;
+                    }
+
+                    const { video, motionCanvas, gestureCanvas } = UI.elements;
+                    const motionCtx = motionCanvas.getContext('2d');
+                    const gestureCtx = gestureCanvas.getContext('2d');
+
+                    // Capture current frame
+                    motionCtx.drawImage(video, 0, 0);
+                    const frame = motionCtx.getImageData(0, 0, motionCanvas.width, motionCanvas.height);
+
+                    // Process frame for motion detection
+                    const { hasMotion, motionPixels } = AppState.motionDetector.processFrame(
+                        frame.data,
+                        motionCanvas.width,
+                        motionCanvas.height
+                    );
+
+                    // Visualize motion and detect gestures
+                    if (hasMotion) {
+                        this.visualizeMotion(gestureCtx, motionPixels);
+                        this.detectGesture(motionPixels);
+                    }
+
+                    requestAnimationFrame(processFrame);
+                };
+
+                requestAnimationFrame(processFrame);
+            },
+
+            visualizeMotion(ctx, motionPixels) {
+                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+
+                motionPixels.forEach(pixel => {
+                    ctx.fillRect(pixel.x, pixel.y, 1, 1);
+                });
+            },
+
+            detectGesture(motionPixels) {
+                const now = Date.now();
+                if (now - AppState.lastGestureTime < CONFIG.GESTURE_DEBOUNCE) return;
+
+                // Calculate motion density in upper region
+                const upperRegionPixels = Array.from(motionPixels).filter(
+                    pixel => pixel.y < UI.elements.gestureCanvas.height * 0.4
+                );
+
+                const density = upperRegionPixels.length / motionPixels.size;
+
+                // Detect GRAB gesture based on motion density
+                if (density > 0.6 && motionPixels.size > 100) {
+                    AppState.lastGestureTime = now;
+                    this.handleGrabGesture();
+                }
+            },
+
+            handleGrabGesture() {
+                UI.elements.gestureStatus.textContent = 'GRAB Gesture Detected!';
+                UI.elements.gestureIndicator.classList.add('active');
+
+                setTimeout(() => {
+                    UI.elements.gestureStatus.textContent = 'Monitoring for gestures...';
+                    UI.elements.gestureIndicator.classList.remove('active');
+                }, 1000);
+
+                if (AppState.mode === 'sender' && AppState.allowTransfer && AppState.fileToSend) {
+                    FileTransferController.startTransfer(AppState.fileToSend);
+                }
+            }
+        };
+
+        // File Transfer Controller
+        const FileTransferController = {
+            async startTransfer(file) {
+                if (AppState.transferInProgress) return;
+
+                AppState.transferInProgress = true;
+                UI.updateStatus('Starting file transfer...', 'info');
+
+                try {
+                    const chunks = await this.prepareFileChunks(file);
+                    await this.sendChunks(chunks);
+
+                    UI.updateStatus('Transfer completed successfully!', 'success');
+                    setTimeout(() => this.resetTransfer(), 2000);
+                } catch (error) {
+                    console.error('Transfer failed:', error);
+                    UI.updateStatus('Transfer failed. Please try again.', 'error');
+                    this.resetTransfer();
+                }
+            },
+
+            async prepareFileChunks(file) {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const chunks = this.chunkData(e.target.result);
+                        resolve(chunks);
+                    };
+                    reader.readAsArrayBuffer(file);
+                });
+            },
+
+            chunkData(data) {
+                const chunks = [];
+                const view = new Uint8Array(data);
+                for (let i = 0; i < view.length; i += CONFIG.CHUNK_SIZE) {
+                    chunks.push(view.slice(i, i + CONFIG.CHUNK_SIZE));
+                }
+                return chunks;
+            },
+
+            async sendChunks(chunks) {
+                const total = chunks.length;
+                for (let i = 0; i < total; i++) {
+                    await this.sendChunk(chunks[i]);
+                    const progress = ((i + 1) / total) * 100;
+                    UI.updateProgress(progress);
+                }
+            },
+
+            async sendChunk(chunk) {
+                return new Promise((resolve) => {
+                    // Simulate network delay for demo
+                    setTimeout(() => {
+                        resolve();
+                    }, 50);
+                });
+            },
+
+            resetTransfer() {
+                AppState.transferInProgress = false;
+                AppState.allowTransfer = false;
+                AppState.fileToSend = null;
+            }
+        };
+
+        // Configuration
         const CONFIG = {
             MAX_FILE_SIZE: 100 * 1024 * 1024, // 100MB
             CHUNK_SIZE: 16384, // 16KB
-            GESTURE_THRESHOLD: 35, // Pixel threshold
-            GESTURE_CONFIDENCE_THRESHOLD: 0.8,
-            DEBOUNCE_DELAY: 1000, // 1 detik
-            GESTURE_DETECTION_INTERVAL: 100, // Deteksi gesture setiap 100ms
-            RTC_CONFIG: {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' }
-                ]
-            }
+            GESTURE_DEBOUNCE: 1000, // 1 second
+            MOTION_THRESHOLD: 30
         };
 
-        // State aplikasi global
-        const AppState = {
-            mode: null,
-            model: null,
-            gestureTriggered: false,
-            fileToSend: null,
-            allowTransfer: false, // mengizinkan transfer hanya setelah tombol "Kirim File" ditekan
-            rtcConnection: null,
-            dataChannel: null,
-            receivedBuffers: [],
-            transferInProgress: false,
-            lastGestureTime: 0,
-            lastDetectionTime: 0,
-            selectedDevice: null
-        };
-
-        // Cache elemen DOM
-        const elements = {
-            video: document.getElementById('video'),
-            canvas: document.getElementById('canvas'),
-            gestureStatus: document.getElementById('gestureStatus'),
-            connectionStatus: document.getElementById('connectionStatus'),
-            gestureIndicator: document.getElementById('gestureIndicator'),
-            connectionStatusText: document.getElementById('connectionStatusText'),
-            status: document.getElementById('status'),
-            roleSelection: document.getElementById('roleSelection'),
-            connectionTypeSection: document.getElementById('connectionTypeSection'),
-            deviceSelectionSection: document.getElementById('deviceSelectionSection'),
-            senderSection: document.getElementById('senderSection'),
-            receiverSection: document.getElementById('receiverSection'),
-            fileInput: document.getElementById('fileInput'),
-            fileName: document.getElementById('fileName'),
-            fileSize: document.getElementById('fileSize'),
-            fileDetails: document.getElementById('fileDetails'),
-            progressBar: document.getElementById('progressBar'),
-            receiverProgressBar: document.getElementById('receiverProgressBar'),
-            downloadSection: document.getElementById('downloadSection'),
-            downloadLink: document.getElementById('downloadLink'),
-            finishSection: document.getElementById('finishSection'),
-            progressContainer: document.getElementById('progressContainer'),
-            manualConnectionBtn: document.getElementById('manualConnectionBtn'),
-            deviceList: document.getElementById('deviceList'),
-            selectDeviceBtn: document.getElementById('selectDeviceBtn'),
-            sendFileBtn: document.getElementById('sendFileBtn')
-        };
-
-        // Fungsi utilitas
-        function calculateDistance(p1, p2) {
-            return Math.sqrt(Math.pow(p1[0] - p2[0], 2) + Math.pow(p1[1] - p2[1], 2));
-        }
-
-        // Handler gesture GRAB dengan debouncing dan pengecekan transfer aktif
-        function handleGrabGesture() {
-            const currentTime = Date.now();
-            if (AppState.gestureTriggered || currentTime - AppState.lastGestureTime < CONFIG.DEBOUNCE_DELAY) {
-                return;
-            }
-            AppState.gestureTriggered = true;
-            AppState.lastGestureTime = currentTime;
-            elements.gestureIndicator.classList.add('active');
-            updateStatus('Gesture terdeteksi!', 'success');
-
-            if (AppState.mode === 'sender') {
-                if (AppState.allowTransfer && AppState.fileToSend && AppState.dataChannel?.readyState === 'open') {
-                    updateStatus('Memulai pengiriman file...', 'info');
-                    sendFile(AppState.fileToSend);
-                    // Reset setelah transfer dimulai
-                    AppState.allowTransfer = false;
-                } else {
-                    updateStatus('File belum dipilih atau transfer belum diaktifkan', 'warning');
-                }
-            } else if (AppState.mode === 'receiver') {
-                updateStatus('Siap menerima file', 'success');
-                // Logika penerimaan file bisa ditambahkan di sini
-            }
-
-            setTimeout(() => {
-                AppState.gestureTriggered = false;
-                elements.gestureIndicator.classList.remove('active');
-            }, CONFIG.DEBOUNCE_DELAY);
-        }
-
-        // Setup kamera secara asynchronous dengan error handling
-        async function setupCamera() {
-            try {
-                const constraints = {
-                    video: {
-                        width: { ideal: 320 },
-                        height: { ideal: 240 },
-                        facingMode: 'user'
-                    }
-                };
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                elements.video.srcObject = stream;
-                return new Promise((resolve) => {
-                    elements.video.onloadedmetadata = () => {
-                        elements.canvas.width = elements.video.videoWidth;
-                        elements.canvas.height = elements.video.videoHeight;
-                        resolve();
-                    };
-                });
-            } catch (error) {
-                console.error('Error akses kamera:', error);
-                updateStatus('Error: Tidak dapat mengakses kamera. ' + error.message, 'danger');
-                throw error;
-            }
-        }
-
-        // Deteksi gesture secara real-time dengan interval untuk optimasi
-        async function detectGesture() {
-            if (!AppState.model) {
-                requestAnimationFrame(detectGesture);
-                return;
-            }
-            const now = Date.now();
-            if (now - AppState.lastDetectionTime < CONFIG.GESTURE_DETECTION_INTERVAL) {
-                requestAnimationFrame(detectGesture);
-                return;
-            }
-            AppState.lastDetectionTime = now;
-
-            const ctx = elements.canvas.getContext('2d');
-            ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
-            try {
-                const predictions = await AppState.model.estimateHands(elements.video);
-                if (predictions && predictions.length > 0) {
-                    const hand = predictions[0];
-                    if (hand.handInViewConfidence > CONFIG.GESTURE_CONFIDENCE_THRESHOLD) {
-                        const thumbTip = hand.landmarks[4];
-                        const indexTip = hand.landmarks[8];
-                        const distance = calculateDistance(thumbTip, indexTip);
-                        drawHandLandmarks(ctx, hand.landmarks);
-                        // Tampilkan status gesture dan eksekusi gesture GRAB jika memenuhi threshold
-                        if (distance < CONFIG.GESTURE_THRESHOLD) {
-                            elements.gestureStatus.textContent = 'Gesture: GRAB';
-                            handleGrabGesture();
-                        } else {
-                            elements.gestureStatus.textContent = 'Gesture: OPEN';
-                        }
-                    } else {
-                        elements.gestureStatus.textContent = 'Tangan terdeteksi, tapi tidak jelas';
-                    }
-                } else {
-                    elements.gestureStatus.textContent = 'Tidak ada tangan terdeteksi';
-                }
-            } catch (error) {
-                console.error('Error deteksi gesture:', error);
-                elements.gestureStatus.textContent = 'Error deteksi gesture';
-            }
-            requestAnimationFrame(detectGesture);
-        }
-
-        // Menggambar landmark tangan pada canvas
-        function drawHandLandmarks(ctx, landmarks) {
-            ctx.fillStyle = '#00FF00';
-            landmarks.forEach(point => {
-                ctx.beginPath();
-                ctx.arc(point[0], point[1], 3, 0, 2 * Math.PI);
-                ctx.fill();
-            });
-        }
-
-        // Update progress transfer
-        function updateProgress(percent) {
-            const progressBar = AppState.mode === 'sender' ? elements.progressBar : elements.receiverProgressBar;
-            progressBar.style.width = `${percent}%`;
-            progressBar.textContent = `${Math.round(percent)}%`;
-        }
-
-        // Update status tampilan
-        function updateStatus(message, type = 'info') {
-            elements.status.className = `alert alert-${type} mt-3`;
-            elements.status.textContent = message;
-        }
-
-        // Fungsi pengiriman file dengan pembacaan file secara chunk
-        function sendFile(file) {
-            if (AppState.transferInProgress) return;
-            AppState.transferInProgress = true;
-            const reader = new FileReader();
-            let offset = 0;
-            const totalSize = file.size;
-
-            reader.onload = async (e) => {
-                const buffer = e.target.result;
-                const sendChunk = async () => {
-                    if (offset >= totalSize) {
-                        AppState.transferInProgress = false;
-                        updateStatus('File berhasil dikirim', 'success');
-                        return;
-                    }
-                    const chunk = buffer.slice(offset, offset + CONFIG.CHUNK_SIZE);
-                    try {
-                        await sendDataChunk(chunk);
-                        offset += chunk.byteLength;
-                        updateProgress((offset / totalSize) * 100);
-                        setTimeout(sendChunk, 10);
-                    } catch (error) {
-                        console.error('Error mengirim chunk:', error);
-                        AppState.transferInProgress = false;
-                        updateStatus('Error mengirim file', 'danger');
-                    }
-                };
-                await sendChunk();
-            };
-
-            reader.onerror = (error) => {
-                console.error('Error membaca file:', error);
-                AppState.transferInProgress = false;
-                updateStatus('Error membaca file', 'danger');
-            };
-
-            reader.readAsArrayBuffer(file);
-        }
-
-        // Dummy function untuk mengirim chunk via DataChannel (simulasi koneksi)
-        function sendDataChunk(chunk) {
-            return new Promise((resolve, reject) => {
-                if (AppState.dataChannel && AppState.dataChannel.readyState === 'open') {
-                    AppState.dataChannel.send(chunk);
-                    resolve();
-                } else {
-                    reject('DataChannel tidak siap');
-                }
-            });
-        }
-
-        // Inisialisasi koneksi simulasi (dataChannel dummy) setelah device dipilih
-        function initSimulatedConnection() {
-            // Simulasi koneksi WebRTC DataChannel
-            AppState.dataChannel = {
-                readyState: 'open',
-                send: function (chunk) {
-                    console.log('Mengirim chunk, ukuran:', chunk.byteLength);
-                }
-            };
-            elements.connectionStatus.classList.remove('hidden');
-            elements.connectionStatusText.textContent = 'Connected ke ' + AppState.selectedDevice;
-        }
-
-        // Inisialisasi aplikasi setelah DOM siap
-        async function initApp() {
-            try {
-                await setupCamera();
-                AppState.model = await handpose.load();
-                updateStatus('Aplikasi siap digunakan');
-                requestAnimationFrame(detectGesture);
-            } catch (error) {
-                console.error('Error inisialisasi aplikasi:', error);
-                updateStatus('Gagal menginisialisasi aplikasi. Silakan muat ulang halaman.', 'danger');
-            }
-        }
-
-        // Validasi elemen DOM (opsional, untuk debugging)
-        function validateDOMElements() {
-            for (const [key, element] of Object.entries(elements)) {
-                if (!element) {
-                    console.error(`Missing DOM element: ${key}`);
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        // Setup event listener untuk setiap langkah alur aplikasi
-        document.addEventListener('DOMContentLoaded', () => {
-            if (!validateDOMElements()) {
-                alert('Terjadi kesalahan saat memuat aplikasi.');
-                return;
-            }
-
-            // Langkah 1: Pemilihan peran
-            document.getElementById('sendRoleBtn').addEventListener('click', () => {
-                AppState.mode = 'sender';
-                elements.roleSelection.classList.add('hidden');
-                elements.connectionTypeSection.classList.remove('hidden');
-                updateStatus('Mode pengirim dipilih. Pilih tipe koneksi.');
-            });
-
-            document.getElementById('receiveRoleBtn').addEventListener('click', () => {
-                AppState.mode = 'receiver';
-                elements.roleSelection.classList.add('hidden');
-                elements.connectionTypeSection.classList.remove('hidden');
-                updateStatus('Mode penerima dipilih. Pilih tipe koneksi.');
-            });
-
-            // Langkah 2: Pemilihan tipe koneksi (saat ini hanya Manual Signaling)
-            elements.manualConnectionBtn.addEventListener('click', () => {
-                elements.connectionTypeSection.classList.add('hidden');
-                elements.deviceSelectionSection.classList.remove('hidden');
-                updateStatus('Pilih device yang tersedia.');
-            });
-
-            // Langkah 3: Pemilihan Device
-            // Ketika salah satu device pada list diklik, tandai sebagai terpilih
-            Array.from(elements.deviceList.children).forEach(item => {
-                item.addEventListener('click', () => {
-                    // Hapus class active dari seluruh item
-                    Array.from(elements.deviceList.children).forEach(i => i.classList.remove('active'));
-                    item.classList.add('active');
-                    elements.selectDeviceBtn.disabled = false;
-                    AppState.selectedDevice = item.getAttribute('data-device-id');
-                });
-            });
-
-            elements.selectDeviceBtn.addEventListener('click', () => {
-                elements.deviceSelectionSection.classList.add('hidden');
-                // Inisialisasi koneksi simulasi
-                initSimulatedConnection();
-                // Tampilkan halaman file transfer sesuai peran
-                if (AppState.mode === 'sender') {
-                    elements.senderSection.classList.remove('hidden');
-                    updateStatus('Silakan pilih file dan tekan tombol Kirim File untuk memulai transfer.');
-                } else if (AppState.mode === 'receiver') {
-                    elements.receiverSection.classList.remove('hidden');
-                    updateStatus('Menunggu file masuk. Lakukan gesture GRAB untuk memulai penerimaan file.');
-                }
-            });
-
-            // Event listener untuk input file (sender)
-            elements.fileInput.addEventListener('change', (event) => {
-                const file = event.target.files[0];
-                if (file) {
-                    elements.fileName.textContent = file.name;
-                    elements.fileSize.textContent = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
-                    elements.fileDetails.classList.remove('hidden');
-                    AppState.fileToSend = file;
-                    updateStatus(`File ${file.name} dipilih. Tekan tombol Kirim File untuk mengaktifkan transfer gesture.`, 'info');
-                }
-            });
-
-            // Event listener untuk tombol "Kirim File" (sender)
-            elements.sendFileBtn.addEventListener('click', () => {
-                if (AppState.fileToSend) {
-                    AppState.allowTransfer = true;
-                    updateStatus('Transfer diaktifkan. Lakukan gesture GRAB untuk mengirim file.', 'info');
-                } else {
-                    updateStatus('Pilih file terlebih dahulu.', 'warning');
-                }
-            });
-
-            initApp();
+        // Initialize application
+        document.addEventListener('DOMContentLoaded', async () => {
+            UI.init();
+            await GestureController.init();
         });
     </script>
 </body>
