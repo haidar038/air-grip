@@ -4,697 +4,901 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Advanced Gesture-Based File Transfer</title>
-    <!-- Bootstrap 5.3 & Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-    <!-- Custom CSS -->
+    <title>Enhanced Gesture File Transfer</title>
+    <!-- Modern Bootstrap with dark mode support -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <!-- TensorFlow & Handpose -->
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/3.20.0/tf.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7/dist/handpose.min.js"></script>
+    <!-- WebRTC Adapter -->
+    <script defer src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
     <style>
         :root {
-            --primary-color: #2563eb;
-            --secondary-color: #1e40af;
-            --success-color: #16a34a;
-            --warning-color: #ca8a04;
-            --error-color: #dc2626;
-            --background-color: #f8fafc;
-            --text-color: #1e293b;
+            --primary-bg: #f8f9fa;
+            --secondary-bg: #e9ecef;
+            --accent-color: #007bff;
+            --text-primary: #212529;
+            --text-secondary: #6c757d;
+        }
+
+        [data-bs-theme="dark"] {
+            --primary-bg: #212529;
+            --secondary-bg: #343a40;
+            --accent-color: #0d6efd;
+            --text-primary: #f8f9fa;
+            --text-secondary: #adb5bd;
         }
 
         body {
-            background: var(--background-color);
-            color: var(--text-color);
-            font-family: system-ui, -apple-system, sans-serif;
+            background: var(--primary-bg);
+            color: var(--text-primary);
+            transition: background-color 0.3s ease;
         }
 
         .app-container {
-            max-width: 1200px;
+            max-width: 800px;
             margin: 0 auto;
-            padding: 1rem;
+            padding: 20px;
+        }
+
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            margin: 20px auto;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
         }
 
         .video-container {
             position: relative;
             width: 100%;
-            max-width: 480px;
-            margin: 1rem auto;
-            border-radius: 1rem;
-            overflow: hidden;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            padding-bottom: 75%;
+            /* 4:3 aspect ratio */
+            background: #000;
         }
 
-        .video-container video,
-        .video-container canvas {
-            width: 100%;
-            height: auto;
-            display: block;
-        }
-
-        .video-container canvas {
+        #video {
             position: absolute;
             top: 0;
             left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
             pointer-events: none;
         }
 
-        .gesture-status {
+        .status-badge {
             position: absolute;
-            bottom: 1rem;
+            bottom: 16px;
             left: 50%;
             transform: translateX(-50%);
             background: rgba(0, 0, 0, 0.8);
             color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            font-size: 0.875rem;
-            backdrop-filter: blur(4px);
-        }
-
-        .connection-badge {
-            position: fixed;
-            top: 1rem;
-            right: 1rem;
-            padding: 0.5rem;
-            border-radius: 0.5rem;
-            font-size: 0.875rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            background: var(--success-color);
-            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            z-index: 10;
             transition: all 0.3s ease;
         }
 
-        .connection-badge.disconnected {
-            background: var(--error-color);
-        }
-
         .gesture-indicator {
-            width: 0.75rem;
-            height: 0.75rem;
+            display: inline-block;
+            width: 12px;
+            height: 12px;
             border-radius: 50%;
-            background: #ef4444;
+            margin-right: 8px;
+            background: #dc3545;
             transition: background-color 0.3s ease;
         }
 
         .gesture-indicator.active {
-            background: #22c55e;
+            background: #28a745;
         }
 
-        .card {
-            background: white;
-            border-radius: 1rem;
-            border: none;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-            transition: transform 0.3s ease;
-        }
-
-        .card:hover {
-            transform: translateY(-2px);
-        }
-
-        .btn {
-            border-radius: 0.5rem;
-            padding: 0.75rem 1.5rem;
-            font-weight: 500;
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            z-index: 1000;
             transition: all 0.3s ease;
         }
 
-        .btn-primary {
-            background: var(--primary-color);
-            border-color: var(--primary-color);
+        .file-input-wrapper {
+            position: relative;
+            margin: 20px 0;
         }
 
-        .btn-primary:hover {
-            background: var(--secondary-color);
-            border-color: var(--secondary-color);
+        .custom-file-input {
+            position: relative;
+            padding: 12px;
+            border: 2px dashed var(--accent-color);
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
         }
 
-        .progress {
-            height: 0.75rem;
-            border-radius: 1rem;
-            background: #e2e8f0;
+        .custom-file-input:hover {
+            border-color: var(--text-primary);
+            background: var(--secondary-bg);
+        }
+
+        .progress-wrapper {
+            margin: 20px 0;
+            background: var(--secondary-bg);
+            border-radius: 8px;
+            overflow: hidden;
         }
 
         .progress-bar {
-            background: var(--primary-color);
+            height: 24px;
             transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: bold;
         }
 
         .device-list {
             max-height: 300px;
             overflow-y: auto;
+            border-radius: 8px;
+            margin: 20px 0;
         }
 
         .device-item {
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin-bottom: 0.5rem;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 8px;
+            background: var(--secondary-bg);
             cursor: pointer;
             transition: all 0.3s ease;
-            border: 2px solid transparent;
         }
 
         .device-item:hover {
-            background: #f1f5f9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
 
         .device-item.active {
-            border-color: var(--primary-color);
-            background: #eff6ff;
+            background: var(--accent-color);
+            color: white;
         }
 
-        .file-drop-zone {
-            border: 2px dashed #cbd5e1;
-            border-radius: 1rem;
-            padding: 2rem;
-            text-align: center;
-            transition: all 0.3s ease;
-            cursor: pointer;
-        }
-
-        .file-drop-zone:hover,
-        .file-drop-zone.drag-over {
-            border-color: var(--primary-color);
-            background: #f8fafc;
-        }
-
-        .loading-spinner {
-            width: 1.5rem;
-            height: 1.5rem;
-            border: 2px solid #f3f3f3;
-            border-top: 2px solid var(--primary-color);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
-        @media (max-width: 768px) {
-            .app-container {
-                padding: 0.5rem;
-            }
-
-            .video-container {
-                max-width: 100%;
-            }
-
-            .btn {
-                padding: 0.5rem 1rem;
-            }
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
         }
     </style>
 </head>
 
 <body>
+    <button class="btn btn-outline-primary theme-toggle" onclick="toggleTheme()">
+        <i class="bi bi-moon-stars"></i>
+    </button>
+
     <div class="app-container">
-        <header class="text-center mb-4">
-            <h1 class="display-5 fw-bold">Advanced Gesture File Transfer</h1>
-            <p class="text-muted">Transfer files securely using gesture recognition</p>
-        </header>
+        <h1 class="text-center mb-4">Enhanced Gesture File Transfer</h1>
 
         <!-- Connection Status -->
-        <div id="connectionStatus" class="connection-badge disconnected">
-            <div id="gestureIndicator" class="gesture-indicator"></div>
+        <div id="connectionStatus" class="connection-status alert alert-warning d-none">
+            <span id="gestureIndicator" class="gesture-indicator"></span>
             <span id="connectionStatusText">Disconnected</span>
         </div>
 
-        <!-- Main Content -->
-        <div class="row g-4">
-            <!-- Video Preview -->
-            <div class="col-md-6">
-                <div class="video-container">
-                    <video id="video" autoplay playsinline muted></video>
-                    <canvas id="motionCanvas"></canvas>
-                    <canvas id="gestureCanvas"></canvas>
-                    <div id="gestureStatus" class="gesture-status">
-                        Initializing camera...
-                    </div>
+        <!-- Main Flow Container -->
+        <div id="mainFlow" class="fade-transition">
+            <!-- Role Selection -->
+            <div id="roleSelection" class="text-center mb-4">
+                <h3>Choose Your Role</h3>
+                <div class="btn-group">
+                    <button id="sendRoleBtn" class="btn btn-lg btn-primary">
+                        <i class="bi bi-upload"></i> Send Files
+                    </button>
+                    <button id="receiveRoleBtn" class="btn btn-lg btn-success">
+                        <i class="bi bi-download"></i> Receive Files
+                    </button>
                 </div>
             </div>
 
-            <!-- Control Panel -->
-            <div class="col-md-6">
-                <!-- Role Selection -->
-                <div id="roleSelection" class="card mb-4">
-                    <div class="card-body">
-                        <h5 class="card-title">Choose Your Role</h5>
-                        <div class="d-grid gap-2">
-                            <button id="sendRoleBtn" class="btn btn-primary">
-                                <i class="bi bi-upload me-2"></i>Send Files
-                            </button>
-                            <button id="receiveRoleBtn" class="btn btn-success">
-                                <i class="bi bi-download me-2"></i>Receive Files
-                            </button>
-                        </div>
+            <!-- Device Selection -->
+            <div id="deviceSelection" class="d-none">
+                <h3>Select Device</h3>
+                <div class="device-list" id="deviceList">
+                    <!-- Devices will be populated dynamically -->
+                </div>
+                <button id="refreshDevicesBtn" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+                <button id="connectDeviceBtn" class="btn btn-primary float-end" disabled>
+                    Connect
+                </button>
+            </div>
+
+            <!-- File Transfer Section -->
+            <div id="transferSection" class="d-none">
+                <!-- Sender UI -->
+                <div id="senderUI" class="d-none">
+                    <div class="custom-file-input" onclick="document.getElementById('fileInput').click()">
+                        <i class="bi bi-cloud-upload display-4"></i>
+                        <p>Click or drop files here</p>
+                        <input type="file" id="fileInput" class="d-none" />
+                    </div>
+                    <div id="fileDetails" class="alert alert-info d-none">
+                        <h5>File Details</h5>
+                        <p class="mb-1">Name: <span id="fileName"></span></p>
+                        <p class="mb-1">Size: <span id="fileSize"></span></p>
+                        <p class="mb-0">Type: <span id="fileType"></span></p>
+                    </div>
+                    <button id="sendFileBtn" class="btn btn-primary w-100 mt-3 d-none">
+                        Start Transfer
+                    </button>
+                </div>
+
+                <!-- Receiver UI -->
+                <div id="receiverUI" class="d-none">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        Waiting for incoming files...
                     </div>
                 </div>
 
-                <!-- File Transfer Section (Sender) -->
-                <div id="senderSection" class="card mb-4 d-none">
-                    <div class="card-body">
-                        <h5 class="card-title">Send Files</h5>
-                        <div id="fileDropZone" class="file-drop-zone mb-3">
-                            <i class="bi bi-cloud-upload display-4"></i>
-                            <p class="mb-0">Drag & drop files here or click to select</p>
-                            <input type="file" id="fileInput" class="d-none">
-                        </div>
-                        <div id="fileDetails" class="d-none">
-                            <div class="d-flex align-items-center mb-3">
-                                <i class="bi bi-file-earmark me-2"></i>
-                                <div>
-                                    <h6 id="fileName" class="mb-1">filename.txt</h6>
-                                    <small id="fileSize" class="text-muted">0 MB</small>
-                                </div>
-                            </div>
-                            <button id="sendFileBtn" class="btn btn-primary w-100">
-                                Start Transfer
-                            </button>
-                        </div>
-                        <div id="progressContainer" class="d-none">
-                            <div class="progress mb-2">
-                                <div id="progressBar" class="progress-bar" role="progressbar"></div>
-                            </div>
-                            <small class="text-muted">Transfer in progress...</small>
-                        </div>
+                <!-- Progress Bar -->
+                <div class="progress-wrapper d-none" id="progressWrapper">
+                    <div class="progress-bar bg-primary" id="progressBar" role="progressbar">
+                        0%
                     </div>
-                </div>
-
-                <!-- File Transfer Section (Receiver) -->
-                <div id="receiverSection" class="card mb-4 d-none">
-                    <div class="card-body">
-                        <h5 class="card-title">Receive Files</h5>
-                        <div class="text-center py-4">
-                            <div class="loading-spinner mb-3"></div>
-                            <p class="mb-0">Waiting for incoming files...</p>
-                            <small class="text-muted d-block mt-2">
-                                Make a GRAB gesture to accept the transfer
-                            </small>
-                        </div>
-                        <div id="receiverProgress" class="progress mb-2 d-none">
-                            <div id="receiverProgressBar" class="progress-bar" role="progressbar"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Status Messages -->
-                <div id="status" class="alert alert-info" role="alert">
-                    Ready to start...
                 </div>
             </div>
         </div>
+
+        <!-- Video Feed -->
+        <div class="video-wrapper">
+            <div class="video-container">
+                <video id="video" autoplay playsinline></video>
+                <canvas id="canvas"></canvas>
+                <div id="gestureStatus" class="status-badge">
+                    Initializing...
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="statusMessages" class="alert alert-info mt-4" role="alert">
+            Welcome! Please select your role to begin.
+        </div>
     </div>
 
-    <!-- Scripts -->
-    <script type="module">
-        // Frame Subtraction Algorithm Implementation
-        class MotionDetector {
-            constructor(threshold = 30) {
-                this.threshold = threshold;
-                this.previousFrame = null;
-                this.motionPixels = new Set();
-            }
-
-            processFrame(currentFrame, width, height) {
-                if (!this.previousFrame) {
-                    this.previousFrame = currentFrame;
-                    return { hasMotion: false, motionPixels: new Set() };
-                }
-
-                this.motionPixels.clear();
-                let hasMotion = false;
-                const len = currentFrame.length;
-
-                for (let i = 0; i < len; i += 4) {
-                    const rDiff = Math.abs(currentFrame[i] - this.previousFrame[i]);
-                    const gDiff = Math.abs(currentFrame[i + 1] - this.previousFrame[i + 1]);
-                    const bDiff = Math.abs(currentFrame[i + 2] - this.previousFrame[i + 2]);
-
-                    if (rDiff > this.threshold || gDiff > this.threshold || bDiff > this.threshold) {
-                        const pixelIndex = Math.floor(i / 4);
-                        const x = pixelIndex % width;
-                        const y = Math.floor(pixelIndex / width);
-                        this.motionPixels.add({ x, y });
-                        hasMotion = true;
+    <script>
+        // Enhanced Configuration Object
+        const CONFIG = {
+            CAMERA: {
+                width: { ideal: 640 },
+                height: { ideal: 480 },
+                facingMode: 'user',
+                frameRate: { ideal: 30 }
+            },
+            FILE: {
+                maxSize: 100 * 1024 * 1024, // 100MB
+                chunkSize: 64 * 1024, // 64KB chunks
+                allowedTypes: ['*/*'] // All file types allowed
+            },
+            GESTURE: {
+                confidenceThreshold: 0.8,
+                detectionInterval: 50, // ms
+                grabThreshold: 40, // pixels
+                holdDuration: 500, // ms
+                cooldown: 1000 // ms
+            },
+            WEBRTC: {
+                iceServers: [
+                    { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
+                    {
+                        urls: 'turn:numb.viagenie.ca',
+                        username: 'webrtc@live.com',
+                        credential: 'muazkh'
                     }
+                ],
+                options: {
+                    ordered: true,
+                    maxRetransmits: 3
                 }
+            }
+        };
 
-                this.previousFrame = currentFrame;
-                return { hasMotion, motionPixels: this.motionPixels };
+        // Enhanced State Management
+        class AppState {
+            constructor() {
+                this.mode = null;
+                this.gestureModel = null;
+                this.mediaStream = null;
+                this.connection = null;
+                this.dataChannel = null;
+                this.currentFile = null;
+                this.transferState = {
+                    inProgress: false,
+                    bytesTransferred: 0,
+                    totalBytes: 0,
+                    startTime: null
+                };
+                this.gestureState = {
+                    isDetecting: false,
+                    lastDetection: 0,
+                    confidence: 0,
+                    holdStart: null
+                };
+                this.deviceState = {
+                    available: [],
+                    selected: null,
+                    scanning: false
+                };
             }
 
             reset() {
-                this.previousFrame = null;
-                this.motionPixels.clear();
+                this.transferState = {
+                    inProgress: false,
+                    bytesTransferred: 0,
+                    totalBytes: 0,
+                    startTime: null
+                };
+                this.gestureState = {
+                    isDetecting: false,
+                    lastDetection: 0,
+                    confidence: 0,
+                    holdStart: null
+                };
             }
         }
 
-        // Application State Management
-        const AppState = {
-            mode: null,
-            motionDetector: new MotionDetector(30),
-            gestureDetected: false,
-            fileToSend: null,
-            allowTransfer: false,
-            connection: null,
-            dataChannel: null,
-            transferInProgress: false,
-            lastGestureTime: 0,
-            buffers: [],
+        const state = new AppState();
 
-            reset() {
-                this.mode = null;
-                this.gestureDetected = false;
-                this.fileToSend = null;
-                this.allowTransfer = false;
-                this.transferInProgress = false;
-                this.buffers = [];
-                this.motionDetector.reset();
+        // Enhanced Gesture Detection System
+        class GestureDetector {
+            constructor(videoElement, canvasElement, statusElement) {
+                this.video = videoElement;
+                this.canvas = canvasElement;
+                this.status = statusElement;
+                this.ctx = this.canvas.getContext('2d');
+                this.isRunning = false;
+                this.lastFrame = 0;
             }
-        };
 
-        // UI Controller
-        const UI = {
-            elements: {
-                video: document.getElementById('video'),
-                motionCanvas: document.getElementById('motionCanvas'),
-                gestureCanvas: document.getElementById('gestureCanvas'),
-                gestureStatus: document.getElementById('gestureStatus'),
-                connectionStatus: document.getElementById('connectionStatus'),
-                gestureIndicator: document.getElementById('gestureIndicator'),
-                status: document.getElementById('status'),
-                // ... (more element references)
-            },
+            async initialize() {
+                try {
+                    state.gestureModel = await handpose.load();
+                    this.isRunning = true;
+                    this.detect();
+                    return true;
+                } catch (error) {
+                    console.error('Failed to initialize gesture detection:', error);
+                    return false;
+                }
+            }
 
-            init() {
-                this.setupEventListeners();
-                this.setupDragAndDrop();
-            },
+            async detect() {
+                if (!this.isRunning) return;
 
-            setupEventListeners() {
-                // Role selection
-                document.getElementById('sendRoleBtn').addEventListener('click', () => {
-                    AppState.mode = 'sender';
-                    this.showSection('senderSection');
-                });
+                const now = performance.now();
+                if (now - this.lastFrame < CONFIG.GESTURE.detectionInterval) {
+                    requestAnimationFrame(() => this.detect());
+                    return;
+                }
+                this.lastFrame = now;
 
-                document.getElementById('receiveRoleBtn').addEventListener('click', () => {
-                    AppState.mode = 'receiver';
-                    this.showSection('receiverSection');
-                });
+                try {
+                    const hands = await state.gestureModel.estimateHands(this.video);
+                    this.processHandData(hands);
+                } catch (error) {
+                    console.warn('Gesture detection error:', error);
+                }
 
-                // File input handling
-                const fileDropZone = document.getElementById('fileDropZone');
-                const fileInput = document.getElementById('fileInput');
+                requestAnimationFrame(() => this.detect());
+            }
 
-                fileDropZone.addEventListener('click', () => fileInput.click());
-                fileInput.addEventListener('change', this.handleFileSelect.bind(this));
+            processHandData(hands) {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-                // Send button
-                document.getElementById('sendFileBtn').addEventListener('click', () => {
-                    if (AppState.fileToSend) {
-                        AppState.allowTransfer = true;
-                        this.updateStatus('Ready to transfer. Make a GRAB gesture to start.', 'info');
-                    }
-                });
-            },
-
-            setupDragAndDrop() {
-                const dropZone = document.getElementById('fileDropZone');
-
-                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                    dropZone.addEventListener(eventName, (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                    });
-                });
-
-                ['dragenter', 'dragover'].forEach(eventName => {
-                    dropZone.addEventListener(eventName, () => {
-                        dropZone.classList.add('drag-over');
-                    });
-                });
-
-                ['dragleave', 'drop'].forEach(eventName => {
-                    dropZone.addEventListener(eventName, () => {
-                        dropZone.classList.remove('drag-over');
-                    });
-                });
-
-                dropZone.addEventListener('drop', (e) => {
-                    const file = e.dataTransfer.files[0];
-                    if (file) {
-                        this.handleFileSelect({ target: { files: [file] } });
-                    }
-                });
-            },
-
-            handleFileSelect(event) {
-                const file = event.target.files[0];
-                if (!file) return;
-
-                if (file.size > CONFIG.MAX_FILE_SIZE) {
-                    this.updateStatus('File too large. Maximum size is 100MB', 'error');
+                if (!hands.length) {
+                    this.updateStatus('No hands detected', 'waiting');
+                    state.gestureState.confidence = 0;
                     return;
                 }
 
-                AppState.fileToSend = file;
-                document.getElementById('fileName').textContent = file.name;
-                document.getElementById('fileSize').textContent = this.formatFileSize(file.size);
-                document.getElementById('fileDetails').classList.remove('d-none');
-            },
-
-            formatFileSize(bytes) {
-                if (bytes === 0) return '0 Bytes';
-                const k = 1024;
-                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-                const i = Math.floor(Math.log(bytes) / Math.log(k));
-                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-            },
-
-            showSection(sectionId) {
-                const sections = ['roleSelection', 'senderSection', 'receiverSection'];
-                sections.forEach(id => {
-                    document.getElementById(id).classList.toggle('d-none', id !== sectionId);
-                });
-            },
-
-            updateStatus(message, type = 'info') {
-                const statusEl = this.elements.status;
-                statusEl.className = `alert alert-${type}`;
-                statusEl.textContent = message;
-            },
-
-            updateProgress(percent, isReceiver = false) {
-                const progressBar = isReceiver ?
-                    document.getElementById('receiverProgressBar') :
-                    document.getElementById('progressBar');
-                const progressContainer = isReceiver ?
-                    document.getElementById('receiverProgress') :
-                    document.getElementById('progressContainer');
-
-                progressContainer.classList.remove('d-none');
-                progressBar.style.width = `${percent}%`;
-                progressBar.setAttribute('aria-valuenow', percent);
-                progressBar.textContent = `${Math.round(percent)}%`;
-            }
-        };
-
-        // Gesture Detection Controller
-        const GestureController = {
-            async init() {
-                try {
-                    await this.setupCamera();
-                    this.setupCanvases();
-                    this.startDetection();
-                } catch (error) {
-                    console.error('Failed to initialize gesture detection:', error);
-                    UI.updateStatus('Camera access failed. Please check permissions.', 'error');
+                const hand = hands[0];
+                if (hand.handInViewConfidence < CONFIG.GESTURE.confidenceThreshold) {
+                    this.updateStatus('Hand detected but not clear', 'low-confidence');
+                    return;
                 }
-            },
 
-            async setupCamera() {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        width: { ideal: 640 },
-                        height: { ideal: 480 },
-                        facingMode: 'user'
+                this.drawLandmarks(hand.landmarks);
+                this.analyzeGesture(hand.landmarks);
+            }
+
+            analyzeGesture(landmarks) {
+                const thumbTip = landmarks[4];
+                const indexTip = landmarks[8];
+                const distance = Math.hypot(thumbTip[0] - indexTip[0], thumbTip[1] - indexTip[1]);
+
+                if (distance < CONFIG.GESTURE.grabThreshold) {
+                    if (!state.gestureState.holdStart) {
+                        state.gestureState.holdStart = performance.now();
+                    } else if (performance.now() - state.gestureState.holdStart > CONFIG.GESTURE.holdDuration) {
+                        this.triggerGrabGesture();
                     }
-                });
-                UI.elements.video.srcObject = stream;
-                await new Promise(resolve => UI.elements.video.onloadedmetadata = resolve);
-            },
+                    this.updateStatus('GRAB detected!', 'active');
+                } else {
+                    state.gestureState.holdStart = null;
+                    this.updateStatus('Hand open', 'ready');
+                }
+            }
 
-            setupCanvases() {
-                const { video, motionCanvas, gestureCanvas } = UI.elements;
-                [motionCanvas, gestureCanvas].forEach(canvas => {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                });
-            },
+            drawLandmarks(landmarks) {
+                this.ctx.fillStyle = '#00FF00';
+                this.ctx.strokeStyle = '#00FF00';
 
-            startDetection() {
-                const processFrame = () => {
-                    if (AppState.transferInProgress) {
-                        requestAnimationFrame(processFrame);
+                // Draw joints
+                landmarks.forEach(point => {
+                    this.ctx.beginPath();
+                    this.ctx.arc(point[0], point[1], 4, 0, 2 * Math.PI);
+                    this.ctx.fill();
+                });
+
+                // Draw connections
+                this.drawHandConnections(landmarks);
+            }
+
+            drawHandConnections(landmarks) {
+                // Define hand connections for better visualization
+                const connections = [
+                    [0, 1], [1, 2], [2, 3], [3, 4], // thumb
+                    [0, 5], [5, 6], [6, 7], [7, 8], // index finger
+                    [0, 9], [9, 10], [10, 11], [11, 12], // middle finger
+                    [0, 13], [13, 14], [14, 15], [15, 16], // ring finger
+                    [0, 17], [17, 18], [18, 19], [19, 20] // pinky
+                ];
+
+                this.ctx.lineWidth = 2;
+                connections.forEach(([i, j]) => {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(landmarks[i][0], landmarks[i][1]);
+                    this.ctx.lineTo(landmarks[j][0], landmarks[j][1]);
+                    this.ctx.stroke();
+                });
+            }
+
+            updateStatus(message, status) {
+                this.status.textContent = message;
+                this.status.className = `status-badge status-${status}`;
+            }
+
+            triggerGrabGesture() {
+                const now = performance.now();
+                if (now - state.gestureState.lastDetection < CONFIG.GESTURE.cooldown) return;
+
+                state.gestureState.lastDetection = now;
+                EventBus.emit('grabGesture');
+            }
+
+            stop() {
+                this.isRunning = false;
+            }
+        }
+
+        // Enhanced WebRTC Connection Manager
+        class ConnectionManager {
+            constructor() {
+                this.peerConnection = null;
+                this.dataChannel = null;
+                this.isInitiator = false;
+            }
+
+            async initialize(isInitiator = false) {
+                this.isInitiator = isInitiator;
+                this.peerConnection = new RTCPeerConnection(CONFIG.WEBRTC);
+
+                this.setupICEHandling();
+
+                if (this.isInitiator) {
+                    this.dataChannel = this.peerConnection.createDataChannel('fileTransfer', CONFIG.WEBRTC.options);
+                    this.setupDataChannel(this.dataChannel);
+                } else {
+                    this.peerConnection.ondatachannel = (event) => {
+                        this.dataChannel = event.channel;
+                        this.setupDataChannel(this.dataChannel);
+                    };
+                }
+
+                return this;
+            }
+
+            setupICEHandling() {
+                this.peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        // Send the ICE candidate to the signaling server
+                        EventBus.emit('iceCandidate', event.candidate);
+                    }
+                };
+
+                this.peerConnection.oniceconnectionstatechange = () => {
+                    EventBus.emit('connectionStateChange', this.peerConnection.iceConnectionState);
+                };
+            }
+
+            setupDataChannel(channel) {
+                channel.binaryType = 'arraybuffer';
+
+                channel.onopen = () => {
+                    EventBus.emit('dataChannelOpen');
+                };
+
+                channel.onclose = () => {
+                    EventBus.emit('dataChannelClose');
+                };
+
+                channel.onerror = (error) => {
+                    EventBus.emit('dataChannelError', error);
+                };
+
+                channel.onmessage = (event) => {
+                    EventBus.emit('dataChannelMessage', event.data);
+                };
+            }
+
+            async createOffer() {
+                try {
+                    const offer = await this.peerConnection.createOffer();
+                    await this.peerConnection.setLocalDescription(offer);
+                    return offer;
+                } catch (error) {
+                    console.error('Error creating offer:', error);
+                    throw error;
+                }
+            }
+
+            async handleAnswer(answer) {
+                try {
+                    await this.peerConnection.setRemoteDescription(answer);
+                } catch (error) {
+                    console.error('Error handling answer:', error);
+                    throw error;
+                }
+            }
+
+            async handleOffer(offer) {
+                try {
+                    await this.peerConnection.setRemoteDescription(offer);
+                    const answer = await this.peerConnection.createAnswer();
+                    await this.peerConnection.setLocalDescription(answer);
+                    return answer;
+                } catch (error) {
+                    console.error('Error handling offer:', error);
+                    throw error;
+                }
+            }
+
+            close() {
+                if (this.dataChannel) {
+                    this.dataChannel.close();
+                }
+                if (this.peerConnection) {
+                    this.peerConnection.close();
+                }
+            }
+        }
+
+        // File Transfer Manager
+        class FileTransferManager {
+            constructor() {
+                this.fileReader = new FileReader();
+                this.receivedBuffers = [];
+                this.setupFileReader();
+            }
+
+            setupFileReader() {
+                this.fileReader.onload = async (event) => {
+                    const buffer = event.target.result;
+                    const chunks = this.chunkBuffer(buffer);
+
+                    for (const chunk of chunks) {
+                        if (!state.transferState.inProgress) break;
+
+                        await this.sendChunk(chunk);
+                        state.transferState.bytesTransferred += chunk.byteLength;
+                        this.updateProgress();
+                    }
+
+                    if (state.transferState.inProgress) {
+                        this.completeTransfer();
+                    }
+                };
+            }
+
+            chunkBuffer(buffer) {
+                const chunks = [];
+                let offset = 0;
+
+                while (offset < buffer.byteLength) {
+                    chunks.push(buffer.slice(offset, offset + CONFIG.FILE.chunkSize));
+                    offset += CONFIG.FILE.chunkSize;
+                }
+
+                return chunks;
+            }
+
+            async sendChunk(chunk) {
+                return new Promise((resolve, reject) => {
+                    if (!state.connection?.dataChannel?.readyState === 'open') {
+                        reject(new Error('Data channel not ready'));
                         return;
                     }
 
-                    const { video, motionCanvas, gestureCanvas } = UI.elements;
-                    const motionCtx = motionCanvas.getContext('2d');
-                    const gestureCtx = gestureCanvas.getContext('2d');
+                    state.connection.dataChannel.send(chunk);
+                    resolve();
+                });
+            }
 
-                    // Capture current frame
-                    motionCtx.drawImage(video, 0, 0);
-                    const frame = motionCtx.getImageData(0, 0, motionCanvas.width, motionCanvas.height);
+            updateProgress() {
+                const progress = (state.transferState.bytesTransferred / state.transferState.totalBytes) * 100;
+                EventBus.emit('transferProgress', progress);
+            }
 
-                    // Process frame for motion detection
-                    const { hasMotion, motionPixels } = AppState.motionDetector.processFrame(
-                        frame.data,
-                        motionCanvas.width,
-                        motionCanvas.height
-                    );
+            completeTransfer() {
+                state.transferState.inProgress = false;
+                EventBus.emit('transferComplete');
+            }
 
-                    // Visualize motion and detect gestures
-                    if (hasMotion) {
-                        this.visualizeMotion(gestureCtx, motionPixels);
-                        this.detectGesture(motionPixels);
-                    }
+            handleIncomingChunk(chunk) {
+                this.receivedBuffers.push(chunk);
+                state.transferState.bytesTransferred += chunk.byteLength;
+                this.updateProgress();
 
-                    requestAnimationFrame(processFrame);
+                if (state.transferState.bytesTransferred === state.transferState.totalBytes) {
+                    this.assembleFile();
+                }
+            }
+
+            assembleFile() {
+                const fileBlob = new Blob(this.receivedBuffers);
+                this.receivedBuffers = [];
+                EventBus.emit('fileReceived', fileBlob);
+            }
+        }
+
+        // Event Bus for decoupled communication
+        class EventBus {
+            static listeners = new Map();
+
+            static on(event, callback) {
+                if (!this.listeners.has(event)) {
+                    this.listeners.set(event, new Set());
+                }
+                this.listeners.get(event).add(callback);
+            }
+
+            static off(event, callback) {
+                if (this.listeners.has(event)) {
+                    this.listeners.get(event).delete(callback);
+                }
+            }
+
+            static emit(event, data) {
+                if (this.listeners.has(event)) {
+                    this.listeners.get(event).forEach(callback => {
+                        try {
+                            callback(data);
+                        } catch (error) {
+                            console.error(`Error in event listener for ${event}:`, error);
+                        }
+                    });
+                }
+            }
+        }
+
+        // UI Manager for handling all UI updates
+        class UIManager {
+            constructor() {
+                this.elements = this.cacheElements();
+                this.setupEventListeners();
+                this.setupThemeSupport();
+            }
+
+            cacheElements() {
+                return {
+                    video: document.getElementById('video'),
+                    canvas: document.getElementById('canvas'),
+                    gestureStatus: document.getElementById('gestureStatus'),
+                    connectionStatus: document.getElementById('connectionStatus'),
+                    roleSelection: document.getElementById('roleSelection'),
+                    deviceSelection: document.getElementById('deviceSelection'),
+                    transferSection: document.getElementById('transferSection'),
+                    senderUI: document.getElementById('senderUI'),
+                    receiverUI: document.getElementById('receiverUI'),
+                    fileInput: document.getElementById('fileInput'),
+                    progressBar: document.getElementById('progressBar'),
+                    statusMessages: document.getElementById('statusMessages')
                 };
+            }
 
-                requestAnimationFrame(processFrame);
-            },
+            handleRoleSelection(role) {
+                state.mode = role;
+                this.showSection('deviceSelection');
+                this.updateStatus(`Mode ${role} dipilih. Silakan pilih device tujuan.`);
 
-            visualizeMotion(ctx, motionPixels) {
-                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-                ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
-
-                motionPixels.forEach(pixel => {
-                    ctx.fillRect(pixel.x, pixel.y, 1, 1);
-                });
-            },
-
-            detectGesture(motionPixels) {
-                const now = Date.now();
-                if (now - AppState.lastGestureTime < CONFIG.GESTURE_DEBOUNCE) return;
-
-                // Calculate motion density in upper region
-                const upperRegionPixels = Array.from(motionPixels).filter(
-                    pixel => pixel.y < UI.elements.gestureCanvas.height * 0.4
-                );
-
-                const density = upperRegionPixels.length / motionPixels.size;
-
-                // Detect GRAB gesture based on motion density
-                if (density > 0.6 && motionPixels.size > 100) {
-                    AppState.lastGestureTime = now;
-                    this.handleGrabGesture();
-                }
-            },
-
-            handleGrabGesture() {
-                UI.elements.gestureStatus.textContent = 'GRAB Gesture Detected!';
-                UI.elements.gestureIndicator.classList.add('active');
-
-                setTimeout(() => {
-                    UI.elements.gestureStatus.textContent = 'Monitoring for gestures...';
-                    UI.elements.gestureIndicator.classList.remove('active');
-                }, 1000);
-
-                if (AppState.mode === 'sender' && AppState.allowTransfer && AppState.fileToSend) {
-                    FileTransferController.startTransfer(AppState.fileToSend);
+                if (role === 'sender') {
+                    this.elements.senderUI.classList.remove('d-none');
+                    this.elements.receiverUI.classList.add('d-none');
+                } else {
+                    this.elements.senderUI.classList.add('d-none');
+                    this.elements.receiverUI.classList.remove('d-none');
                 }
             }
-        };
 
-        // File Transfer Controller
-        const FileTransferController = {
-            async startTransfer(file) {
-                if (AppState.transferInProgress) return;
+            setupEventListeners() {
+                // Role selection
+                document.getElementById('sendRoleBtn').onclick = () => this.handleRoleSelection('sender');
+                document.getElementById('receiveRoleBtn').onclick = () => this.handleRoleSelection('receiver');
 
-                AppState.transferInProgress = true;
-                UI.updateStatus('Starting file transfer...', 'info');
+                // File input
+                this.elements.fileInput.onchange = (event) => this.handleFileSelection(event);
 
-                try {
-                    const chunks = await this.prepareFileChunks(file);
-                    await this.sendChunks(chunks);
-
-                    UI.updateStatus('Transfer completed successfully!', 'success');
-                    setTimeout(() => this.resetTransfer(), 2000);
-                } catch (error) {
-                    console.error('Transfer failed:', error);
-                    UI.updateStatus('Transfer failed. Please try again.', 'error');
-                    this.resetTransfer();
-                }
-            },
-
-            async prepareFileChunks(file) {
-                return new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        const chunks = this.chunkData(e.target.result);
-                        resolve(chunks);
-                    };
-                    reader.readAsArrayBuffer(file);
-                });
-            },
-
-            chunkData(data) {
-                const chunks = [];
-                const view = new Uint8Array(data);
-                for (let i = 0; i < view.length; i += CONFIG.CHUNK_SIZE) {
-                    chunks.push(view.slice(i, i + CONFIG.CHUNK_SIZE));
-                }
-                return chunks;
-            },
-
-            async sendChunks(chunks) {
-                const total = chunks.length;
-                for (let i = 0; i < total; i++) {
-                    await this.sendChunk(chunks[i]);
-                    const progress = ((i + 1) / total) * 100;
-                    UI.updateProgress(progress);
-                }
-            },
-
-            async sendChunk(chunk) {
-                return new Promise((resolve) => {
-                    // Simulate network delay for demo
-                    setTimeout(() => {
-                        resolve();
-                    }, 50);
-                });
-            },
-
-            resetTransfer() {
-                AppState.transferInProgress = false;
-                AppState.allowTransfer = false;
-                AppState.fileToSend = null;
+                // Event bus listeners
+                EventBus.on('transferProgress', (progress) => this.updateProgress(progress));
+                EventBus.on('connectionStateChange', (state) => this.updateConnectionStatus(state));
+                EventBus.on('statusUpdate', (message) => this.updateStatus(message));
             }
-        };
 
-        // Configuration
-        const CONFIG = {
-            MAX_FILE_SIZE: 100 * 1024 * 1024, // 100MB
-            CHUNK_SIZE: 16384, // 16KB
-            GESTURE_DEBOUNCE: 1000, // 1 second
-            MOTION_THRESHOLD: 30
-        };
+            setupThemeSupport() {
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+                this.updateTheme(prefersDark.matches);
+                prefersDark.addEventListener('change', (e) => this.updateTheme(e.matches));
+            }
+
+            updateTheme(isDark) {
+                document.documentElement.setAttribute('data-bs-theme', isDark ? 'dark' : 'light');
+            }
+
+            showSection(sectionId) {
+                Object.values(this.elements).forEach(element => {
+                    if (element?.classList.contains('section')) {
+                        element.classList.add('d-none');
+                    }
+                });
+                const section = this.elements[sectionId];
+                if (section) {
+                    section.classList.remove('d-none');
+                }
+            }
+
+            updateProgress(progress) {
+                this.elements.progressBar.style.width = `${progress}%`;
+                this.elements.progressBar.textContent = `${Math.round(progress)}%`;
+            }
+
+            updateConnectionStatus(state) {
+                const statusElement = this.elements.connectionStatus;
+                statusElement.className = `connection-status alert alert-${this.getStatusClass(state)}`;
+                statusElement.textContent = `Connection: ${state}`;
+            }
+
+            getStatusClass(state) {
+                const statusMap = {
+                    'connected': 'success',
+                    'connecting': 'warning',
+                    'disconnected': 'danger',
+                    'failed': 'danger'
+                };
+                return statusMap[state] || 'info';
+            }
+
+            updateStatus(message, type = 'info') {
+                this.elements.statusMessages.className = `alert alert-${type} mt-4`;
+                this.elements.statusMessages.textContent = message;
+            }
+
+            async handleFileSelection(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                if (file.size > CONFIG.FILE.maxSize) {
+                    this.updateStatus('File too large. Maximum size is 100MB', 'danger');
+                    return;
+                }
+
+                state.currentFile = file;
+                this.updateFileDetails(file);
+                this.elements.sendFileBtn.classList.remove('d-none');
+            }
+
+            updateFileDetails(file) {
+                const details = this.elements.fileDetails;
+                details.classList.remove('d-none');
+                details.querySelector('#fileName').textContent = file.name;
+                details.querySelector('#fileSize').textContent = this.formatFileSize(file.size);
+                details.querySelector('#fileType').textContent = file.type || 'Unknown';
+            }
+
+            formatFileSize(bytes) {
+                const units = ['B', 'KB', 'MB', 'GB'];
+                let size = bytes;
+                let unitIndex = 0;
+
+                while (size >= 1024 && unitIndex < units.length - 1) {
+                    size /= 1024;
+                    unitIndex++;
+                }
+
+                return `${size.toFixed(2)} ${units[unitIndex]}`;
+            }
+        }
 
         // Initialize application
-        document.addEventListener('DOMContentLoaded', async () => {
-            UI.init();
-            await GestureController.init();
-        });
+        async function initializeApp() {
+            const ui = new UIManager();
+            const gestureDetector = new GestureDetector(
+                document.getElementById('video'),
+                document.getElementById('canvas'),
+                document.getElementById('gestureStatus')
+            );
+
+            try {
+                await setupCamera();
+                await gestureDetector.initialize();
+                ui.updateStatus('Application initialized successfully', 'success');
+            } catch (error) {
+                ui.updateStatus('Failed to initialize application: ' + error.message, 'danger');
+                console.error('Initialization error:', error);
+            }
+        }
+
+        // Camera setup utility
+        async function setupCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: CONFIG.CAMERA
+                });
+
+                const videoElement = document.getElementById('video');
+                videoElement.srcObject = stream;
+
+                return new Promise((resolve) => {
+                    videoElement.onloadedmetadata = () => {
+                        const canvas = document.getElementById('canvas');
+                        canvas.width = videoElement.videoWidth;
+                        canvas.height = videoElement.videoHeight;
+                        resolve(stream);
+                    };
+                });
+            } catch (error) {
+                console.error('Camera access error:', error);
+                throw new Error('Could not access camera');
+            }
+        }
+
+        // Theme toggle function
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-bs-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-bs-theme', newTheme);
+        }
+
+        // Initialize the application when the DOM is ready
+        document.addEventListener('DOMContentLoaded', initializeApp);
     </script>
 </body>
 
